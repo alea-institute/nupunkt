@@ -1,0 +1,95 @@
+[project]
+name = "nupunkt"
+version = "0.2.0"
+description = "Next-generation Punkt sentence boundary detection with zero dependencies"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    {name = "ALEA Institute", email = "hello@aleainstitute.ai"}
+]
+keywords = [
+    "nlp",
+    "natural language processing",
+    "tokenization",
+    "sentence boundary detection",
+    "punkt",
+    "text processing",
+    "linguistics"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "tqdm>=4.65.0",
+    # lzma is in the standard library for Python 3.3+
+]
+
+[project.urls]
+"Homepage" = "https://github.com/alea-institute/nupunkt"
+"Source" = "https://github.com/alea-institute/nupunkt"
+"Bug Tracker" = "https://github.com/alea-institute/nupunkt/issues"
+"Changelog" = "https://github.com/alea-institute/nupunkt/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.0.280",
+    "black>=23.0.0",
+    "pytest-benchmark>=5.1.0",
+    "pytest-cov>=6.0.0",
+]
+docs = [
+    "sphinx>=6.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+    "myst-parser>=2.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = [
+    "nupunkt",
+    "nupunkt.core",
+    "nupunkt.tokenizers",
+    "nupunkt.trainers",
+    "nupunkt.utils",
+    "nupunkt.models"
+]
+
+[tool.setuptools.package-data]
+"nupunkt.models" = ["*.json", "*.json.xz"]
+
+[tool.ruff]
+select = ["E", "F", "B", "I"]
+target-version = "py311"
+line-length = 100
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+# Testing config
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v"
