@@ -2,10 +2,11 @@
 PunktParameters module - Contains the parameters for the Punkt algorithm.
 """
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Set, Tuple, Union
+from typing import Any, Dict, Optional, Pattern, Set, Tuple, Union
 
 from nupunkt.utils.compression import (
     load_compressed_json,
@@ -30,6 +31,56 @@ class PunktParameters:
     collocations: Set[Tuple[str, str]] = field(default_factory=set)
     sent_starters: Set[str] = field(default_factory=set)
     ortho_context: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    
+    # Cached regex patterns for efficient lookups
+    _abbrev_pattern: Optional[Pattern] = field(default=None, repr=False)
+    _sent_starter_pattern: Optional[Pattern] = field(default=None, repr=False)
+    
+    def __post_init__(self) -> None:
+        """Initialize any derived attributes after instance creation."""
+        # Patterns will be compiled on first use
+        
+    def get_abbrev_pattern(self) -> Pattern:
+        """
+        Get a compiled regex pattern for matching abbreviations.
+        
+        The pattern is compiled on first use and cached for subsequent calls.
+        
+        Returns:
+            A compiled regex pattern that matches any abbreviation in abbrev_types
+        """
+        if not self._abbrev_pattern or len(self._abbrev_pattern.pattern) == 0:
+            if not self.abbrev_types:
+                # If no abbreviations, create a pattern that will never match
+                self._abbrev_pattern = re.compile(r"^$")
+            else:
+                # Escape abbreviations and sort by length (longest first) to ensure proper matching
+                escaped_abbrevs = [re.escape(abbr) for abbr in self.abbrev_types]
+                sorted_abbrevs = sorted(escaped_abbrevs, key=len, reverse=True)
+                pattern = r"^(?:" + "|".join(sorted_abbrevs) + r")$"
+                self._abbrev_pattern = re.compile(pattern, re.IGNORECASE)
+        return self._abbrev_pattern
+    
+    def get_sent_starter_pattern(self) -> Pattern:
+        """
+        Get a compiled regex pattern for matching sentence starters.
+        
+        The pattern is compiled on first use and cached for subsequent calls.
+        
+        Returns:
+            A compiled regex pattern that matches any sentence starter
+        """
+        if not self._sent_starter_pattern or len(self._sent_starter_pattern.pattern) == 0:
+            if not self.sent_starters:
+                # If no sentence starters, create a pattern that will never match
+                self._sent_starter_pattern = re.compile(r"^$")
+            else:
+                # Escape sentence starters and sort by length (longest first)
+                escaped_starters = [re.escape(starter) for starter in self.sent_starters]
+                sorted_starters = sorted(escaped_starters, key=len, reverse=True)
+                pattern = r"^(?:" + "|".join(sorted_starters) + r")$"
+                self._sent_starter_pattern = re.compile(pattern, re.IGNORECASE)
+        return self._sent_starter_pattern
 
     def add_ortho_context(self, typ: str, flag: int) -> None:
         """
@@ -40,7 +91,52 @@ class PunktParameters:
             flag: The orthographic context flag
         """
         self.ortho_context[typ] |= flag
+    
+    def add_abbreviation(self, abbrev: str) -> None:
+        """
+        Add a single abbreviation and invalidate the cached pattern.
+        
+        Args:
+            abbrev: The abbreviation to add
+        """
+        self.abbrev_types.add(abbrev)
+        self._abbrev_pattern = None
+        
+    def add_sent_starter(self, starter: str) -> None:
+        """
+        Add a single sentence starter and invalidate the cached pattern.
+        
+        Args:
+            starter: The sentence starter to add
+        """
+        self.sent_starters.add(starter)
+        self._sent_starter_pattern = None
 
+    def invalidate_patterns(self) -> None:
+        """Invalidate cached regex patterns when sets are modified."""
+        self._abbrev_pattern = None
+        self._sent_starter_pattern = None
+    
+    def update_abbrev_types(self, abbrevs: Set[str]) -> None:
+        """
+        Update abbreviation types and invalidate the cached pattern.
+        
+        Args:
+            abbrevs: Set of abbreviations to add
+        """
+        self.abbrev_types.update(abbrevs)
+        self._abbrev_pattern = None
+        
+    def update_sent_starters(self, starters: Set[str]) -> None:
+        """
+        Update sentence starters and invalidate the cached pattern.
+        
+        Args:
+            starters: Set of sentence starters to add
+        """
+        self.sent_starters.update(starters)
+        self._sent_starter_pattern = None
+    
     def to_json(self) -> Dict[str, Any]:
         """Convert parameters to a JSON-serializable dictionary."""
         return {
@@ -60,6 +156,10 @@ class PunktParameters:
         params.ortho_context = defaultdict(int)
         for k, v in data.get("ortho_context", {}).items():
             params.ortho_context[k] = int(v)  # Ensure value is int
+        
+        # Don't pre-compile patterns by default
+        # Direct set lookup is faster based on benchmarks
+            
         return params
 
     def save(

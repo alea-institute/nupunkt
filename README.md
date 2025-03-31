@@ -128,10 +128,10 @@ nupunkt is designed to be both accurate and efficient. It can process large volu
 Performance Results:
   Documents processed:      1
   Total characters:         16,567,769
-  Total sentences found:    16,070
-  Processing time:          2.81 seconds
-  Processing speed:         5,896,222 characters/second
-  Average sentence length:  1031.0 characters
+  Total sentences found:    16,095
+  Processing time:          0.48 seconds
+  Processing speed:         34,425,114 characters/second
+  Average sentence length:  1029.4 characters
 ```
 
 ## Contributing

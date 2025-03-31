@@ -29,6 +29,22 @@ def test_punkt_parameters_basic():
     # Test adding sentence starters
     params.sent_starters.add("however")
     assert "however" in params.sent_starters
+    
+    # Test the new helper methods
+    params.add_abbreviation("mr")
+    assert "mr" in params.abbrev_types
+    
+    params.add_sent_starter("furthermore")
+    assert "furthermore" in params.sent_starters
+    
+    # Test updating sets
+    params.update_abbrev_types({"prof", "dr", "ms"})
+    assert "prof" in params.abbrev_types
+    assert "ms" in params.abbrev_types
+    
+    params.update_sent_starters({"additionally", "moreover"})
+    assert "additionally" in params.sent_starters
+    assert "moreover" in params.sent_starters
 
 
 def test_punkt_parameters_ortho_context():
@@ -136,6 +152,46 @@ def test_punkt_parameters_json_methods():
     assert set(new_params.collocations) == set(params.collocations)
     assert set(new_params.sent_starters) == set(params.sent_starters)
     assert new_params.ortho_context == params.ortho_context
+
+
+def test_regex_pattern_compilation():
+    """Test regex pattern compilation for abbreviations and sentence starters."""
+    params = PunktParameters()
+    
+    # Add a substantial number of abbreviations
+    for i in range(60):
+        params.add_abbreviation(f"abbr{i}")
+    
+    # Add a substantial number of sentence starters
+    for i in range(60):
+        params.add_sent_starter(f"start{i}")
+    
+    # Get the patterns
+    abbrev_pattern = params.get_abbrev_pattern()
+    sent_starter_pattern = params.get_sent_starter_pattern()
+    
+    # Verify the patterns work as expected
+    assert abbrev_pattern.match("abbr0")
+    assert abbrev_pattern.match("abbr59")
+    assert not abbrev_pattern.match("nonexistent")
+    
+    assert sent_starter_pattern.match("start0")
+    assert sent_starter_pattern.match("start59")
+    assert not sent_starter_pattern.match("nonexistent")
+    
+    # Test case insensitivity
+    assert abbrev_pattern.match("ABBR10")
+    assert sent_starter_pattern.match("START10")
+    
+    # Test pattern caching
+    abbrev_pattern_second = params.get_abbrev_pattern()
+    assert abbrev_pattern is abbrev_pattern_second  # Same object, not recompiled
+    
+    # Test invalidation on update
+    params.add_abbreviation("newabbr")
+    abbrev_pattern_third = params.get_abbrev_pattern()
+    assert abbrev_pattern is not abbrev_pattern_third  # Should be recompiled
+    assert abbrev_pattern_third.match("newabbr")  # Should include the new abbreviation
 
 
 @pytest.mark.benchmark(group="parameters")
