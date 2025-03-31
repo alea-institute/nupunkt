@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-Script to test the default model for nupunkt.
+Script to test and verify the default model for nupunkt.
 
 This script:
-1. Loads the default model from nupunkt/models/
-2. Tests its performance on a variety of sentence examples
-3. Optionally runs evaluations on test data if available
+1. Tests the default model with sample legal and financial texts
+2. Exports the model to different formats as needed
 """
 
 import sys
 import os
 import time
+import argparse
 from pathlib import Path
-import gzip
 import json
-from typing import List, Dict, Tuple, Any
+import gzip
+from typing import List, Dict, Any
 
 # Add the parent directory to the path so we can import nupunkt
 script_dir = Path(__file__).parent
@@ -22,46 +22,46 @@ root_dir = script_dir.parent
 sys.path.append(str(root_dir))
 
 # Import nupunkt
+from nupunkt.models import load_default_model, get_default_model_path, optimize_default_model
 from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 
 # Test cases organized by category
 TEST_CASES = {
     "basic": [
         "This is a simple sentence. This is another one.",
-        "Hello world! How are you today? I'm doing well.",
-        "The quick brown fox jumps over the lazy dog. The fox was very quick."
-    ],
-    "abbreviations": [
-        "Dr. Smith went to Washington, D.C. He was very excited about the trip.",
-        "The company (Ltd.) was founded in 1997. It has grown significantly since then.",
-        "Mr. Johnson and Mrs. Lee will attend the meeting at 3 p.m. They will discuss the agenda.",
-        "She has a B.A. in English. She also studied French in college.",
-        "The U.S. economy is growing. Many industries are showing improvement."
+        "The contract was signed on June 15, 2024. Both parties received copies.",
+        "The market closed at 4 p.m. yesterday. Trading volume was high."
     ],
     "legal_citations": [
-        "Under 18 U.S.C. 12, this is a legal citation. The next sentence begins here.",
+        "Pursuant to 17 U.S.C. § 506(a), copyright infringement is a federal crime. Penalties can be severe.",
         "As stated in Fed. R. Civ. P. 56(c), summary judgment is appropriate. This standard is well established.",
-        "In Smith v. Jones, 123 F.3d 456 (9th Cir. 1997), the court ruled in favor of the plaintiff. This set a precedent.",
-        "According to Cal. Civ. Code § 123, the contract must be in writing. This requirement is strict."
+        "In Smith v. Jones, 123 F.3d 456 (9th Cir. 1997), the court ruled for the plaintiff. This set a precedent.",
+        "According to Cal. Civ. Code § 1624, certain contracts must be in writing. This requirement is strictly enforced."
     ],
-    "ellipsis": [
-        "This text contains an ellipsis... And this is a new sentence.",
-        "The story continues... But not for long.",
-        "He paused for a moment... Then he continued walking.",
-        "She thought about it for a while... Then she made her decision."
+    "financial": [
+        "The company reported Q1 earnings of $2.5B. This exceeded analyst expectations.",
+        "Apple Inc. (AAPL) closed at $189.84 on Friday. The stock has gained 15.3% YTD.",
+        "The Federal Reserve raised interest rates by 25 bps. Markets reacted positively to the announcement.",
+        "As per the 10-K filing, revenue increased by 12.4% YoY. Operating expenses remained stable."
     ],
-    "other_punctuation": [
-        "Let me give you an example, e.g. this one. Did you understand it?",
-        "The company (formerly known as Tech Solutions, Inc.) was acquired last year. The new owners rebranded it.",
-        "The meeting is at 3 p.m. Don't be late!",
-        "He said, \"I'll be there at 5 p.m.\" Then he hung up the phone."
+    "abbreviations": [
+        "Prof. Williams presented the findings at the conference. His research was well-received.",
+        "The merger between Corp. A and Inc. B was approved. Shareholders will vote next month.",
+        "Dr. Johnson et al. published their analysis in the J. Fin. Econ. The paper examined market anomalies.",
+        "Ms. Garcia, Esq. filed the motion on behalf of XYZ Co. The hearing is scheduled for next week."
+    ],
+    "punctuation": [
+        "The SEC issued Rule 10b-5, which prohibits securities fraud. Violations can result in severe penalties.",
+        "The prospectus (dated March 1, 2024) contains important disclosures. Investors should read it carefully.",
+        "The meeting is at 2:30 p.m. EST. Please prepare all required documentation.",
+        "He stated, \"The merger will be completed by Q3.\" The timeline seems ambitious."
     ],
     "challenging": [
-        "The patient presented with abd. pain. CT scan was ordered.",
-        "The table shows results for Jan. Feb. and Mar. Each month shows improvement.",
-        "Visit the website at www.example.com. There you'll find more information.",
-        "She scored 92 vs. 85 in the previous match. Her performance has improved.",
-        "The temperature was 32 deg. C. It was quite hot that day."
+        "The court granted cert. Review is pending before the Supreme Court.",
+        "Inflation rose to 3.2% in Jan. Feb. and Mar. showed similar trends.",
+        "Visit the company website at www.example.com. There you'll find investor information.",
+        "The stock trades at 15x vs. 20x for peers. This valuation gap represents an opportunity.",
+        "The bond yields 5.2% p.a. This rate is competitive in the current market."
     ]
 }
 
@@ -123,26 +123,19 @@ def test_examples(tokenizer: PunktSentenceTokenizer) -> None:
             for i, sentence in enumerate(sentences, 1):
                 print(f"  Sentence {i}: {sentence.strip()}")
 
-def main():
-    """Test the default model and report results."""
-    # Set paths
-    models_dir = root_dir / "nupunkt" / "models"
-    model_path = models_dir / "default_model.json.xz"
-    test_path = root_dir / "data" / "test.jsonl.gz"
+def test_model():
+    """Test the default model with sample texts and run performance evaluation."""
+    print("Loading default model...")
+    model_path = get_default_model_path()
+    tokenizer = load_default_model()
     
-    # Check if model exists
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model file not found: {model_path}")
-    
-    # Load the model
-    print(f"Loading model from {model_path}...")
-    tokenizer = PunktSentenceTokenizer.load(model_path)
-    print("Model loaded successfully")
+    print(f"Loaded model from: {model_path}")
     
     # Test on examples
     test_examples(tokenizer)
     
     # Test on test data if available
+    test_path = root_dir / "data" / "test.jsonl.gz"
     if test_path.exists():
         print(f"\n=== Performance Evaluation on Test Data ===")
         test_texts = load_test_data(test_path)
@@ -162,8 +155,59 @@ def main():
     else:
         print(f"\nNote: Test data file not found: {test_path}")
         print("Skipping performance evaluation.")
+
+def export_model(format_type, compression_method, compression_level, output_path=None):
+    """Export the default model to a specified format."""
+    print(f"\n=== Exporting Model to {format_type} Format ===")
+    print(f"Compression method: {compression_method}, Level: {compression_level}")
     
-    print("\nTesting completed successfully.")
+    # Export the model
+    result_path = optimize_default_model(
+        output_path=output_path,
+        format_type=format_type,
+        compression_method=compression_method,
+        compression_level=compression_level
+    )
+    
+    print(f"Model exported successfully to: {result_path}")
+    if os.path.exists(result_path):
+        size_kb = os.path.getsize(result_path) / 1024
+        print(f"File size: {size_kb:.2f} KB")
+
+def main():
+    """Run the default model testing and format optimization."""
+    parser = argparse.ArgumentParser(description="Test and optimize the default model for nupunkt")
+    parser.add_argument("--test", action="store_true", help="Test the model with sample texts")
+    parser.add_argument("--export", action="store_true", help="Export the model to a specified format")
+    parser.add_argument("--format", type=str, default="binary", 
+                        choices=["json", "json_xz", "binary"],
+                        help="Format to save the model in")
+    parser.add_argument("--compression", type=str, default="lzma", 
+                        choices=["none", "zlib", "lzma", "gzip"],
+                        help="Compression method for binary format")
+    parser.add_argument("--level", type=int, default=6, 
+                        help="Compression level (0-9)")
+    parser.add_argument("--output", type=str, default=None,
+                        help="Custom output path for the exported model")
+    
+    args = parser.parse_args()
+    
+    # If no arguments provided, run all tests
+    if not (args.test or args.export):
+        args.test = True
+    
+    # Run tests if requested
+    if args.test:
+        test_model()
+    
+    # Export model if requested
+    if args.export:
+        export_model(
+            format_type=args.format,
+            compression_method=args.compression,
+            compression_level=args.level,
+            output_path=args.output
+        )
 
 if __name__ == "__main__":
     main()

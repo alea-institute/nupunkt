@@ -1,30 +1,44 @@
 """
 Model package for nupunkt.
 
-This module provides functionality for loading the default pre-trained model.
+This module provides functionality for loading and optimizing the default pre-trained model.
 """
 
 import os
 import json
+import tempfile
 from pathlib import Path
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Dict, Any
 
 from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
+from nupunkt.utils.compression import (
+    save_compressed_json, 
+    load_compressed_json,
+    save_binary_model,
+    compare_formats
+)
 
 
 def get_default_model_path() -> Path:
     """
     Get the path to the default pre-trained model.
     
-    The function searches for both compressed (.json.xz) and uncompressed (.json) versions
-    of the default model, preferring the compressed version if available.
+    The function searches for models in priority order:
+    1. Binary format (.bin)
+    2. Compressed JSON (.json.xz)
+    3. Uncompressed JSON (.json)
     
     Returns:
         Path: The path to the default model file
     """
     base_dir = Path(__file__).parent
     
-    # Check for compressed model first
+    # Check for binary model first (most efficient format)
+    binary_path = base_dir / "default_model.bin"
+    if binary_path.exists():
+        return binary_path
+    
+    # Check for compressed model next
     compressed_path = base_dir / "default_model.json.xz"
     if compressed_path.exists():
         return compressed_path
@@ -44,40 +58,76 @@ def load_default_model() -> PunktSentenceTokenizer:
     return PunktSentenceTokenizer.load(model_path)
 
 
-def compress_default_model(output_path: Optional[Union[str, Path]] = None, 
-                           compression_level: int = 1) -> Path:
+def optimize_default_model(output_path: Optional[Union[str, Path]] = None,
+                           format_type: str = "binary",
+                           compression_method: str = "lzma",
+                           compression_level: int = 6) -> Path:
     """
-    Compress the default model using LZMA.
+    Optimize the default model using the specified format and compression.
     
     Args:
-        output_path: Optional path to save the compressed model. If None,
-                    saves to the default location.
-        compression_level: LZMA compression level (0-9). Lower means faster 
-                          compression but larger file size.
+        output_path: Optional path to save the optimized model. If None,
+                    saves to the default location based on format_type.
+        format_type: Format to use ("binary", "json_xz", or "json")
+        compression_method: For binary format, the compression method to use
+                           ("none", "zlib", "lzma", "gzip")
+        compression_level: Compression level (0-9). Higher means better
+                          compression but slower operation.
                           
     Returns:
-        Path: The path to the compressed model file
+        Path: The path to the optimized model file
     """
-    from nupunkt.utils.compression import save_compressed_json, load_compressed_json
+    # Get the current model data (from whatever format it's currently in)
+    current_model_path = get_default_model_path()
+    data = load_compressed_json(current_model_path)
     
-    # Get the path to the default model
-    default_path = Path(__file__).parent / "default_model.json"
-    
-    # Determine output path
+    # Determine output path and extension based on format
+    base_dir = Path(__file__).parent
     if output_path is None:
-        output_path = default_path.with_suffix(".json.xz")
+        if format_type == "binary":
+            output_path = base_dir / "default_model.bin"
+        elif format_type == "json_xz":
+            output_path = base_dir / "default_model.json.xz"
+        else:
+            output_path = base_dir / "default_model.json"
     else:
         output_path = Path(output_path)
     
-    # Load the model data
-    try:
-        with open(default_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        # Try loading using the utility function (in case it's already compressed)
-        data = load_compressed_json(default_path)
-    
-    # Save compressed model
-    save_compressed_json(data, output_path, level=compression_level, use_compression=True)
+    # Save in the requested format
+    if format_type == "binary":
+        save_binary_model(
+            data, 
+            output_path, 
+            compression_method=compression_method,
+            level=compression_level
+        )
+    else:
+        save_compressed_json(
+            data, 
+            output_path, 
+            level=compression_level, 
+            use_compression=(format_type == "json_xz")
+        )
     
     return output_path
+
+
+def compare_model_formats(output_dir: Optional[Union[str, Path]] = None) -> Dict[str, int]:
+    """
+    Compare different storage formats for the default model and output their file sizes.
+    
+    This function creates multiple versions of the default model in different formats
+    and compression settings and returns their file sizes.
+    
+    Args:
+        output_dir: Directory to save test files (if None, uses temp directory)
+        
+    Returns:
+        Dictionary mapping format names to file sizes in bytes
+    """
+    # Load the current model data
+    current_model_path = get_default_model_path()
+    data = load_compressed_json(current_model_path)
+    
+    # Compare formats and return results
+    return compare_formats(data, output_dir)

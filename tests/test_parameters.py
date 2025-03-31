@@ -55,9 +55,9 @@ def test_punkt_parameters_save_load():
         params.sent_starters.add("however")
         params.add_ortho_context("word", 1)
         
-        # Save uncompressed
+        # Save uncompressed JSON
         uncompressed_path = Path(tmpdir) / "params.json"
-        params.save(uncompressed_path, compress=False)
+        params.save(uncompressed_path, format_type="json")
         
         # Verify it's saved as expected
         assert uncompressed_path.exists()
@@ -73,15 +73,33 @@ def test_punkt_parameters_save_load():
         assert "however" in loaded_params.sent_starters
         assert loaded_params.ortho_context["word"] == 1
         
-        # Save compressed
+        # Save compressed JSON
         compressed_path = Path(tmpdir) / "params.json.xz"
-        params.save(compressed_path, compress=True)
+        params.save(compressed_path, format_type="json_xz")
         
         # Verify it's saved as expected
         assert compressed_path.exists()
         
         # Load back
         loaded_params = PunktParameters.load(compressed_path)
+        
+        # Verify it's the same
+        assert "dr" in loaded_params.abbrev_types
+        assert "mr" in loaded_params.abbrev_types
+        assert "prof" in loaded_params.abbrev_types
+        assert ("new", "york") in loaded_params.collocations
+        assert "however" in loaded_params.sent_starters
+        assert loaded_params.ortho_context["word"] == 1
+        
+        # Save binary format
+        binary_path = Path(tmpdir) / "params.bin"
+        params.save(binary_path, format_type="binary")
+        
+        # Verify it's saved as expected
+        assert binary_path.exists()
+        
+        # Load back
+        loaded_params = PunktParameters.load(binary_path)
         
         # Verify it's the same
         assert "dr" in loaded_params.abbrev_types
@@ -143,7 +161,7 @@ def test_parameters_save_benchmark(benchmark):
     
     def save_compressed():
         with tempfile.NamedTemporaryFile(suffix=".json.xz", delete=True) as tmp:
-            params.save(tmp.name, compress=True, compression_level=1)
+            params.save(tmp.name, format_type="json_xz", compression_level=1)
             # Get file size
             size = os.path.getsize(tmp.name)
             # Return size to see in benchmark results
@@ -178,7 +196,7 @@ def test_parameters_load_benchmark(benchmark):
     
     # Save to a temporary file first
     with tempfile.NamedTemporaryFile(suffix=".json.xz", delete=False) as tmp:
-        params.save(tmp.name, compress=True, compression_level=1)
+        params.save(tmp.name, format_type="json_xz", compression_level=1)
         temp_path = tmp.name
     
     def load_compressed():

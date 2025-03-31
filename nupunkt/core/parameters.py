@@ -8,7 +8,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Set, Tuple, Union
 
-from nupunkt.utils.compression import save_compressed_json, load_compressed_json
+from nupunkt.utils.compression import (
+    save_compressed_json, 
+    load_compressed_json, 
+    save_binary_model,
+    load_binary_model
+)
 
 
 @dataclass
@@ -58,26 +63,41 @@ class PunktParameters:
             params.ortho_context[k] = int(v)  # Ensure value is int
         return params
         
-    def save(self, file_path: Union[str, Path], compress: bool = True, compression_level: int = 1) -> None:
+    def save(self, file_path: Union[str, Path], 
+             format_type: str = "json_xz", 
+             compression_level: int = 1, 
+             compression_method: str = "zlib") -> None:
         """
-        Save parameters to a JSON file, optionally with LZMA compression.
+        Save parameters to a file using the specified format and compression.
         
         Args:
             file_path: The path to save the file to
-            compress: Whether to compress the file using LZMA (default: True)
-            compression_level: LZMA compression level (0-9), lower is faster but less compressed
+            format_type: The format type to use ('json', 'json_xz', 'binary')
+            compression_level: Compression level (0-9), lower is faster but less compressed
+            compression_method: Compression method for binary format ('none', 'zlib', 'lzma', 'gzip')
         """
-        save_compressed_json(
-            self.to_json(), 
-            file_path, 
-            level=compression_level, 
-            use_compression=compress
-        )
+        if format_type == "binary":
+            save_binary_model(
+                self.to_json(), 
+                file_path, 
+                compression_method=compression_method,
+                level=compression_level
+            )
+        else:
+            save_compressed_json(
+                self.to_json(), 
+                file_path, 
+                level=compression_level, 
+                use_compression=(format_type == "json_xz")
+            )
             
     @classmethod
     def load(cls, file_path: Union[str, Path]) -> "PunktParameters":
         """
-        Load parameters from a JSON file, which may be compressed with LZMA.
+        Load parameters from a file in any supported format.
+        
+        This method automatically detects the file format based on extension
+        and loads the parameters accordingly.
         
         Args:
             file_path: The path to the file
@@ -85,5 +105,6 @@ class PunktParameters:
         Returns:
             A new PunktParameters instance
         """
+        # The load_compressed_json function will try to detect if it's a binary file
         data = load_compressed_json(file_path)
         return cls.from_json(data)

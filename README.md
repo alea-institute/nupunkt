@@ -30,9 +30,15 @@ pip install nupunkt
 from nupunkt import sent_tokenize
 
 text = """
-Hello world! This is a test of nupunkt. It handles abbreviations like Dr. Smith 
-and Mrs. Jones. It also handles ellipsis... as well as other punctuation?!
-U.S.C. § 42 defines the law.
+Employee also specifically and forever releases the Acme Inc. (Company) and the Company Parties (except where and 
+to the extent that such a release is expressly prohibited or made void by law) from any claims based on unlawful 
+employment discrimination or harassment, including, but not limited to, the Federal Age Discrimination in 
+Employment Act (29 U.S.C. § 621 et. seq.). This release does not include Employee’s right to indemnification, 
+and related insurance coverage, under Sec. 7.1.4 or Ex. 1-1 of the Employment Agreement, his right to equity awards,
+or continued exercise, pursuant to the terms of any specific equity award (or similar) agreement between 
+Employee and the Company nor to Employee’s right to benefits under any Company plan or program in which
+Employee participated and is due a benefit in accordance with the terms of the plan or program as of the Effective
+Date and ending at 11:59 p.m. Eastern Time on Sep. 15, 2013.
 """
 
 # Tokenize into sentences
@@ -40,16 +46,23 @@ sentences = sent_tokenize(text)
 
 # Print the results
 for i, sentence in enumerate(sentences, 1):
-    print(f"Sentence {i}: {sentence}")
+    print(f"Sentence {i}: {sentence}\n")
 ```
 
 Output:
 ```
-Sentence 1: Hello world!
-Sentence 2: This is a test of nupunkt.
-Sentence 3: It handles abbreviations like Dr. Smith and Mrs. Jones.
-Sentence 4: It also handles ellipsis... as well as other punctuation?!
-Sentence 5: U.S.C. § 42 defines the law.
+Sentence 1:
+Employee also specifically and forever releases the Acme Inc. (Company) and the Company Parties (except where and
+to the extent that such a release is expressly prohibited or made void by law) from any claims based on unlawful
+employment discrimination or harassment, including, but not limited to, the Federal Age Discrimination in
+Employment Act (29 U.S.C. § 621 et. seq.).
+
+Sentence 2:  This release does not include Employee’s right to indemnification,
+and related insurance coverage, under Sec. 7.1.4 or Ex. 1-1 of the Employment Agreement, his right to equity awards,
+or continued exercise, pursuant to the terms of any specific equity award (or similar) agreement between
+Employee and the Company nor to Employee’s right to benefits under any Company plan or program in which
+Employee participated and is due a benefit in accordance with the terms of the plan or program as of the Effective
+Date and ending at 11:59 p.m. Eastern Time on Sep. 15, 2013.
 ```
 
 ## Documentation
@@ -62,6 +75,22 @@ For more detailed documentation, see the [docs](./docs) directory:
 - [Architecture](./docs/architecture.md)
 - [Training Models](./docs/training_models.md)
 - [Advanced Usage](./docs/advanced_usage.md)
+
+## Command-line Tools
+
+nupunkt comes with several utility scripts for working with models:
+
+- **check_abbreviation.py**: Check if a token is in the model's abbreviation list
+  ```bash
+  python -m scripts.utils.check_abbreviation "U.S." 
+  python -m scripts.utils.check_abbreviation --list   # List all abbreviations
+  python -m scripts.utils.check_abbreviation --count  # Count abbreviations
+  ```
+
+- **test_tokenizer.py**: Test the tokenizer on sample text
+- **model_info.py**: Display information about a model file
+
+See the [scripts/utils/README.md](./scripts/utils/README.md) for more details on available tools.
 
 ## Advanced Example
 
@@ -92,6 +121,18 @@ for s in sentences:
 ## Performance
 
 nupunkt is designed to be both accurate and efficient. It can process large volumes of text quickly, making it suitable for production NLP pipelines.
+
+
+### Example Legal Domain Benchmark
+```
+Performance Results:
+  Documents processed:      1
+  Total characters:         16,567,769
+  Total sentences found:    16,070
+  Processing time:          2.81 seconds
+  Processing speed:         5,896,222 characters/second
+  Average sentence length:  1031.0 characters
+```
 
 ## Contributing
 
