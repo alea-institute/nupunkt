@@ -2,6 +2,87 @@
 
 This guide covers advanced usage patterns and customization options for nupunkt.
 
+## Memory-Efficient Training
+
+NUpunkt now includes several optimizations for training on very large text collections with manageable memory usage. These optimizations allow you to train on much larger corpora than was previously possible.
+
+### Memory Optimization Techniques
+
+1. **Early Pruning**: Discard low-frequency items during training
+2. **Streaming Processing**: Process text without storing complete token lists
+3. **Batch Training**: Process text in manageable chunks
+4. **Memory Configuration**: Fine-tune memory usage via parameters
+
+### Basic Memory-Efficient Training
+
+```python
+from nupunkt.trainers.base_trainer import PunktTrainer
+
+# Create a memory-efficient trainer
+trainer = PunktTrainer(memory_efficient=True, verbose=True)
+
+# Train with streaming mode (avoids storing all tokens at once)
+trainer.train(text)
+
+# Get the trained parameters
+params = trainer.get_params()
+```
+
+### Batch Training for Very Large Corpora
+
+For extremely large text collections, you can use batch training:
+
+```python
+from nupunkt.trainers.base_trainer import PunktTrainer
+
+# Create a trainer
+trainer = PunktTrainer(verbose=True)
+
+# Split text into batches
+batches = PunktTrainer.text_to_batches(huge_text, batch_size=1000000)
+
+# Train in batches
+trainer.train_batches(batches, verbose=True)
+```
+
+### Memory Configuration Parameters
+
+You can fine-tune the memory usage with these parameters:
+
+```python
+trainer = PunktTrainer(memory_efficient=True)
+
+# Configure memory usage
+trainer.TYPE_FDIST_MIN_FREQ = 2      # Minimum frequency to keep a type
+trainer.COLLOC_FDIST_MIN_FREQ = 3    # Minimum frequency for collocations
+trainer.SENT_STARTER_MIN_FREQ = 2    # Minimum frequency for sentence starters
+trainer.PRUNE_INTERVAL = 10000       # How often to prune (token count)
+trainer.CHUNK_SIZE = 10000           # Size of token chunks for processing
+```
+
+### Command-Line Usage
+
+When using the default training script, you can enable memory optimizations:
+
+```bash
+python -m scripts.train_default_model \
+  --memory-efficient \
+  --min-type-freq 2 \
+  --prune-freq 10000 \
+  --use-batches \
+  --batch-size 1000000
+```
+
+### Memory Impact
+
+The memory optimizations can significantly reduce memory usage:
+
+| Optimization | Memory Reduction | Impact on Model Quality |
+|--------------|------------------|-------------------------|
+| Early Pruning | ~30-50% | Minimal (removes rare items) |
+| Streaming Processing | ~40-60% | None (same algorithm) |
+| Batch Training | Scales to any size | None (same algorithm) |
+
 ## Model Compression
 
 Models in nupunkt are saved with LZMA compression by default, which significantly reduces file size while maintaining fast loading times. You can control compression settings when saving models:

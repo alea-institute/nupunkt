@@ -53,6 +53,14 @@ class PunktTrainer(PunktBase):
     )
     PERSIST_ABBREVS: bool = True  # Whether to persist abbreviations between training runs
 
+    # Memory optimization parameters
+    TYPE_FDIST_MIN_FREQ: int = 2  # Minimum frequency to keep a type in frequency distribution
+    COLLOC_FDIST_MIN_FREQ: int = 3  # Minimum frequency to keep a collocation
+    SENT_STARTER_MIN_FREQ: int = 5  # Minimum frequency to keep a sentence starter
+    PRUNE_INTERVAL: int = 10000  # How often to prune frequency distributions (token count)
+    MEMORY_EFFICIENT: bool = False  # Whether to use memory-efficient training methods
+    CHUNK_SIZE: int = 10000  # Size of token chunks for processing in memory-efficient mode
+
     # Common English abbreviations that should always be detected
     COMMON_ABBREVS: ClassVar[List[str]] = ["..."]  # Include ellipsis as a common "abbreviation"
 
@@ -67,6 +75,14 @@ class PunktTrainer(PunktBase):
     CONFIG_MAX_ABBREV_LENGTH: str = "max_abbrev_length"
     CONFIG_COMMON_ABBREVS: str = "common_abbrevs"
     CONFIG_LANGUAGE: str = "language"
+    
+    # Memory optimization configuration keys
+    CONFIG_TYPE_FDIST_MIN_FREQ: str = "type_fdist_min_freq"
+    CONFIG_COLLOC_FDIST_MIN_FREQ: str = "colloc_fdist_min_freq"
+    CONFIG_SENT_STARTER_MIN_FREQ: str = "sent_starter_min_freq"
+    CONFIG_PRUNE_INTERVAL: str = "prune_interval"
+    CONFIG_MEMORY_EFFICIENT: str = "memory_efficient"
+    CONFIG_CHUNK_SIZE: str = "chunk_size"
 
     def __init__(
         self,
@@ -75,6 +91,7 @@ class PunktTrainer(PunktBase):
         lang_vars: Optional[PunktLanguageVars] = None,
         token_cls: Type[PunktToken] = PunktToken,
         include_common_abbrevs: bool = True,  # Whether to include common abbreviations by default
+        memory_efficient: Optional[bool] = None,  # Whether to use memory-efficient mode
     ) -> None:
         """
         Initialize the trainer, optionally with training text.
@@ -85,6 +102,7 @@ class PunktTrainer(PunktBase):
             lang_vars: Language-specific variables
             token_cls: The token class to use
             include_common_abbrevs: Whether to include common abbreviations by default
+            memory_efficient: Whether to use memory-efficient training methods
         """
         super().__init__(lang_vars, token_cls)
         self._type_fdist: CounterType[str] = Counter()
@@ -93,6 +111,11 @@ class PunktTrainer(PunktBase):
         self._sent_starter_fdist: CounterType[str] = Counter()
         self._sentbreak_count: int = 0
         self._finalized: bool = True
+        self._token_count: int = 0  # Counter for pruning frequency
+        
+        # Set memory efficiency mode
+        if memory_efficient is not None:
+            self.MEMORY_EFFICIENT = memory_efficient
 
         # Pre-load common abbreviations for better handling
         if include_common_abbrevs:
@@ -138,19 +161,24 @@ class PunktTrainer(PunktBase):
         if verbose:
             try:
                 from tqdm import tqdm
-
                 print("Tokenizing text...")
             except ImportError:
                 tqdm = lambda x, **kwargs: x
                 print("Note: Install tqdm for progress bars during training.")
 
-        # Tokenize text
-        tokens = list(self._tokenize_words(text))
-
-        if verbose:
-            print(f"Found {len(tokens)} tokens in text.")
-
-        self._train_tokens(tokens, verbose)
+        # Choose training method based on memory efficiency setting
+        if self.MEMORY_EFFICIENT:
+            if verbose:
+                print("Using memory-efficient training mode")
+            self._streaming_train(text, verbose)
+        else:
+            # Traditional approach: tokenize entire text at once
+            tokens = list(self._tokenize_words(text))
+            
+            if verbose:
+                print(f"Found {len(tokens)} tokens in text.")
+            
+            self._train_tokens(tokens, verbose)
 
         # Reapply preserved abbreviations if needed
         if should_preserve and original_abbrevs:
@@ -166,6 +194,285 @@ class PunktTrainer(PunktBase):
 
         if finalize:
             self.finalize_training(verbose)
+    
+    def train_batches(
+        self, text_iterator, verbose: bool = False, finalize: bool = True
+    ) -> None:
+        """
+        Train on text in batches for better memory management.
+        
+        Args:
+            text_iterator: Iterator yielding text batches
+            verbose: Whether to display progress information
+            finalize: Whether to finalize after all batches
+        """
+        # Save existing abbreviations to preserve them
+        original_abbrevs = set(self._params.abbrev_types) if self.PERSIST_ABBREVS else set()
+        
+        # Track if we're starting fresh
+        first_batch = True
+        batch_count = 0
+        
+        for batch in text_iterator:
+            batch_count += 1
+            if verbose:
+                print(f"\nProcessing batch {batch_count}, size: {len(batch)} characters")
+            
+            # Train on this batch without finalizing
+            self.train(batch, verbose=verbose, finalize=False, preserve_abbrevs=not first_batch)
+            first_batch = False
+            
+            # Force garbage collection after each batch
+            try:
+                import gc
+                gc.collect()
+            except ImportError:
+                pass
+        
+        if verbose:
+            print(f"Completed training on {batch_count} batches")
+            
+        # Restore original abbreviations if configured to do so
+        if self.PERSIST_ABBREVS and original_abbrevs:
+            for abbrev in original_abbrevs:
+                self._params.abbrev_types.add(abbrev)
+        
+        # Finalize training if requested
+        if finalize:
+            self.finalize_training(verbose)
+    
+    @staticmethod
+    def text_to_batches(text, batch_size=1000000):
+        """
+        Split text into batches of approximately the given size.
+        
+        This method attempts to split at paragraph boundaries to maintain
+        context integrity.
+        
+        Args:
+            text: The text to split
+            batch_size: Target batch size in characters
+            
+        Yields:
+            Text batches
+        """
+        if not text:
+            return
+            
+        # Split text into paragraphs (to preserve context)
+        paragraphs = text.split("\n\n")
+        
+        current_batch = []
+        current_size = 0
+        
+        for paragraph in paragraphs:
+            paragraph_size = len(paragraph) + 2  # Add 2 for the newlines
+            
+            # If this paragraph would push us over the batch size, yield current batch
+            if current_size > 0 and current_size + paragraph_size > batch_size:
+                yield "\n\n".join(current_batch)
+                current_batch = []
+                current_size = 0
+            
+            # Add this paragraph to the current batch
+            current_batch.append(paragraph)
+            current_size += paragraph_size
+            
+        # Yield any remaining paragraphs
+        if current_batch:
+            yield "\n\n".join(current_batch)
+
+    def _streaming_train(self, text: str, verbose: bool) -> None:
+        """
+        Train on text in a streaming fashion to reduce memory usage.
+        
+        This method avoids storing the entire token list at once.
+        
+        Args:
+            text: The text to train on
+            verbose: Whether to display progress information
+        """
+        self._finalized = False
+        
+        if verbose:
+            print("Starting streaming tokenization and training...")
+        
+        # First pass: tokenize and count
+        token_generator = self._tokenize_words(text)
+        
+        # Process tokens to build frequency distributions
+        token_count = 0
+        if verbose:
+            try:
+                from tqdm import tqdm
+                print("First pass: counting tokens...")
+            except ImportError:
+                print("First pass: counting tokens...")
+        
+        # We need to track unique types for abbreviation detection
+        unique_types = set()
+        
+        # Reset token counter for pruning
+        self._token_count = 0
+        
+        # First pass - collect frequencies
+        for token in token_generator:
+            token_count += 1
+            self._token_count += 1
+            self._type_fdist[token.type] += 1
+            unique_types.add(token.type)
+            
+            if token.period_final:
+                self._num_period_toks += 1
+                
+            # Periodically prune the frequency distributions to save memory
+            if self._token_count % self.PRUNE_INTERVAL == 0:
+                self._prune_distributions()
+        
+        if verbose:
+            print(f"Processed {token_count} tokens with {len(unique_types)} unique types.")
+            
+            # Print the most frequent tokens with periods
+            if self._type_fdist:
+                print("\nMost frequent tokens ending with period:")
+                period_tokens = [
+                    (t, c)
+                    for t, c in self._type_fdist.items()
+                    if t.endswith(".") and c >= self.ABBREV_BACKOFF
+                ]
+                period_tokens.sort(key=lambda x: x[1], reverse=True)
+                for token, count in period_tokens[:20]:
+                    print(f"  {token:<15} {count:>5}")
+                    
+            print("\nIdentifying abbreviations...")
+            
+        # Identify abbreviation types
+        abbrev_iter = self._reclassify_abbrev_types(unique_types)
+        
+        for typ, score, is_add in abbrev_iter:
+            if score >= self.ABBREV:
+                if is_add:
+                    self._params.abbrev_types.add(typ)
+            else:
+                if not is_add and typ in self._params.abbrev_types:
+                    self._params.abbrev_types.remove(typ)
+        
+        # Second pass: annotation and feature collection
+        if verbose:
+            print("Second pass: analyzing token context...")
+        
+        # Re-tokenize for the second pass
+        tokens = self._tokenize_words(text)
+        
+        # Annotate tokens with sentence breaks
+        annotated_tokens = self._annotate_first_pass(tokens)
+        
+        # Process in chunks to reduce memory usage
+        chunk_size = self.CHUNK_SIZE
+        token_chunk = []
+        chunk_count = 0
+        
+        for token in annotated_tokens:
+            token_chunk.append(token)
+            
+            if len(token_chunk) >= chunk_size:
+                chunk_count += 1
+                if verbose and chunk_count % 10 == 0:
+                    print(f"Processing chunk {chunk_count} ({len(token_chunk)} tokens)...")
+                
+                # Process the current chunk
+                self._process_token_chunk(token_chunk, verbose)
+                
+                # Clear the chunk to free memory
+                token_chunk = []
+                
+                # Force garbage collection
+                try:
+                    import gc
+                    gc.collect()
+                except ImportError:
+                    pass
+        
+        # Process the final chunk if any tokens remain
+        if token_chunk:
+            chunk_count += 1
+            if verbose:
+                print(f"Processing final chunk {chunk_count} ({len(token_chunk)} tokens)...")
+            
+            self._process_token_chunk(token_chunk, verbose)
+        
+        if verbose:
+            print(f"Processed {chunk_count} chunks of tokens.")
+    
+    def _process_token_chunk(self, tokens: List[PunktToken], verbose: bool) -> None:
+        """
+        Process a chunk of tokens for orthographic data, collocations, and sentence starters.
+        
+        Args:
+            tokens: The chunk of tokens to process
+            verbose: Whether to display progress information
+        """
+        # Gather orthographic data
+        self._get_orthography_data(tokens)
+        self._sentbreak_count += sum(1 for t in tokens if t.sentbreak)
+        
+        # Analyze token pairs for collocations and sentence starters
+        for token1, token2 in pair_iter(tokens):
+            if not token1.period_final or token2 is None:
+                continue
+            
+            # Increment token counter
+            self._token_count += 1
+            
+            if self._is_rare_abbrev_type(token1, token2):
+                self._params.abbrev_types.add(token1.type_no_period)
+            
+            # Only track high-potential sentence starters
+            if self._is_potential_sent_starter(token2, token1):
+                # Skip if the type appears too rarely
+                if self._type_fdist[token2.type] >= self.SENT_STARTER_MIN_FREQ:
+                    self._sent_starter_fdist[token2.type] += 1
+            
+            # Only track high-potential collocations
+            if self._is_potential_collocation(token1, token2):
+                # Skip if either token appears too rarely
+                if (self._type_fdist[token1.type_no_period] >= self.COLLOC_FDIST_MIN_FREQ and
+                    self._type_fdist[token2.type_no_sentperiod] >= self.COLLOC_FDIST_MIN_FREQ):
+                    
+                    pair = (token1.type_no_period, token2.type_no_sentperiod)
+                    self._collocation_fdist[pair] += 1
+            
+            # Periodically prune the frequency distributions to save memory
+            if self._token_count % self.PRUNE_INTERVAL == 0:
+                self._prune_distributions()
+    
+    def _prune_distributions(self) -> None:
+        """
+        Prune frequency distributions to remove rare items.
+        
+        This reduces memory usage by discarding low-frequency items that are
+        unlikely to be useful in the final model.
+        """
+        # Prune type frequency distribution if enabled
+        if self.TYPE_FDIST_MIN_FREQ > 1:
+            rare_types = [typ for typ, count in self._type_fdist.items() 
+                         if count < self.TYPE_FDIST_MIN_FREQ]
+            for typ in rare_types:
+                del self._type_fdist[typ]
+        
+        # Prune collocation frequency distribution
+        if self.COLLOC_FDIST_MIN_FREQ > 1:
+            rare_collocs = [colloc for colloc, count in self._collocation_fdist.items() 
+                           if count < self.COLLOC_FDIST_MIN_FREQ]
+            for colloc in rare_collocs:
+                del self._collocation_fdist[colloc]
+        
+        # Prune sentence starter frequency distribution
+        if self.SENT_STARTER_MIN_FREQ > 1:
+            rare_starters = [starter for starter, count in self._sent_starter_fdist.items() 
+                            if count < self.SENT_STARTER_MIN_FREQ]
+            for starter in rare_starters:
+                del self._sent_starter_fdist[starter]
 
     def _train_tokens(self, tokens: List[PunktToken], verbose: bool) -> None:
         """
@@ -176,11 +483,12 @@ class PunktTrainer(PunktBase):
             verbose: Whether to display progress information
         """
         self._finalized = False
+        # Reset token counter for pruning
+        self._token_count = 0
 
         if verbose:
             try:
                 from tqdm import tqdm
-
                 token_iter = tqdm(tokens, desc="Counting tokens", unit="token")
             except ImportError:
                 token_iter = tokens
@@ -194,9 +502,21 @@ class PunktTrainer(PunktBase):
             self._type_fdist[token.type] += 1
             if token.period_final:
                 self._num_period_toks += 1
+            
+            # Increment token counter for pruning
+            self._token_count += 1
+            
+            # Periodically prune frequency distributions if memory efficiency is enabled
+            if self.MEMORY_EFFICIENT and self._token_count % self.PRUNE_INTERVAL == 0:
+                self._prune_distributions()
 
-        # Identify abbreviation types
-        unique_types = {token.type for token in tokens}
+        # Filter types by frequency if memory efficiency is enabled
+        if self.MEMORY_EFFICIENT:
+            unique_types = {token.type for token in tokens 
+                         if self._type_fdist[token.type] >= self.TYPE_FDIST_MIN_FREQ}
+        else:
+            unique_types = {token.type for token in tokens}
+            
         if verbose:
             print(f"Found {len(unique_types)} unique token types.")
 
@@ -214,7 +534,6 @@ class PunktTrainer(PunktBase):
             print("\nIdentifying abbreviations...")
             try:
                 from tqdm import tqdm
-
                 abbrev_iter = tqdm(
                     list(self._reclassify_abbrev_types(unique_types)),
                     desc="Classifying abbreviations",
@@ -236,7 +555,7 @@ class PunktTrainer(PunktBase):
         # Annotate tokens with sentence breaks
         if verbose:
             print("Annotating tokens...")
-        tokens = list(self._annotate_first_pass(tokens))  # type: ignore  # list will be converted to iterator
+        tokens = list(self._annotate_first_pass(tokens))
 
         # Gather orthographic data
         if verbose:
@@ -249,24 +568,57 @@ class PunktTrainer(PunktBase):
             print("Analyzing token pairs...")
             try:
                 from tqdm import tqdm
-
-                pairs = list(pair_iter(tokens))  # type: ignore  # list will be converted to iterator
+                pairs = list(pair_iter(tokens))
                 pair_iter_with_progress = tqdm(pairs, desc="Analyzing token pairs", unit="pair")
             except ImportError:
-                pair_iter_with_progress = pair_iter(tokens)  # type: ignore  # list will be converted to iterator
+                pair_iter_with_progress = pair_iter(tokens)
         else:
-            pair_iter_with_progress = pair_iter(tokens)  # type: ignore  # list will be converted to iterator
+            pair_iter_with_progress = pair_iter(tokens)
+        
+        # Reset token counter for pair iteration
+        self._token_count = 0
 
         for token1, token2 in pair_iter_with_progress:
             if not token1.period_final or token2 is None:
                 continue
+            
+            # Increment token counter for pruning
+            self._token_count += 1
+            
             if self._is_rare_abbrev_type(token1, token2):
                 self._params.abbrev_types.add(token1.type_no_period)
-            if self._is_potential_sent_starter(token2, token1):
-                self._sent_starter_fdist[token2.type] += 1
-            if self._is_potential_collocation(token1, token2):
-                pair = (token1.type_no_period, token2.type_no_sentperiod)
-                self._collocation_fdist[pair] += 1
+                
+            # Apply frequency filtering if memory efficiency is enabled
+            if self.MEMORY_EFFICIENT:
+                # Only track high-potential sentence starters
+                if self._is_potential_sent_starter(token2, token1):
+                    # Skip if the type appears too rarely
+                    if self._type_fdist[token2.type] >= self.SENT_STARTER_MIN_FREQ:
+                        self._sent_starter_fdist[token2.type] += 1
+                
+                # Only track high-potential collocations
+                if self._is_potential_collocation(token1, token2):
+                    # Skip if either token appears too rarely
+                    if (self._type_fdist[token1.type_no_period] >= self.COLLOC_FDIST_MIN_FREQ and
+                        self._type_fdist[token2.type_no_sentperiod] >= self.COLLOC_FDIST_MIN_FREQ):
+                        
+                        pair = (token1.type_no_period, token2.type_no_sentperiod)
+                        self._collocation_fdist[pair] += 1
+            else:
+                # Original logic without frequency filtering
+                if self._is_potential_sent_starter(token2, token1):
+                    self._sent_starter_fdist[token2.type] += 1
+                if self._is_potential_collocation(token1, token2):
+                    pair = (token1.type_no_period, token2.type_no_sentperiod)
+                    self._collocation_fdist[pair] += 1
+            
+            # Periodically prune if memory efficiency is enabled
+            if self.MEMORY_EFFICIENT and self._token_count % self.PRUNE_INTERVAL == 0:
+                self._prune_distributions()
+        
+        # Final pruning if memory efficiency is enabled
+        if self.MEMORY_EFFICIENT:
+            self._prune_distributions()
 
     def _reclassify_abbrev_types(self, types: Set[str]) -> Iterator[Tuple[str, float, bool]]:
         """
@@ -661,10 +1013,19 @@ class PunktTrainer(PunktBase):
             self.CONFIG_MIN_COLLOC_FREQ: self.MIN_COLLOC_FREQ,
             self.CONFIG_MAX_ABBREV_LENGTH: self.MAX_ABBREV_LENGTH,
             self.CONFIG_COMMON_ABBREVS: self.COMMON_ABBREVS,
+            
+            # Memory optimization parameters
+            self.CONFIG_TYPE_FDIST_MIN_FREQ: self.TYPE_FDIST_MIN_FREQ,
+            self.CONFIG_COLLOC_FDIST_MIN_FREQ: self.COLLOC_FDIST_MIN_FREQ,
+            self.CONFIG_SENT_STARTER_MIN_FREQ: self.SENT_STARTER_MIN_FREQ,
+            self.CONFIG_PRUNE_INTERVAL: self.PRUNE_INTERVAL,
+            self.CONFIG_MEMORY_EFFICIENT: self.MEMORY_EFFICIENT,
+            self.CONFIG_CHUNK_SIZE: self.CHUNK_SIZE,
+            
             # Current parameters (trained model)
             "parameters": self._params.to_json(),
             # Metadata
-            "version": "0.2.0",
+            "version": "0.3.0",
             "description": "nupunkt sentence tokenizer model",
         }
         return config
@@ -704,6 +1065,14 @@ class PunktTrainer(PunktBase):
         trainer.MIN_COLLOC_FREQ = data.get(cls.CONFIG_MIN_COLLOC_FREQ, cls.MIN_COLLOC_FREQ)
         trainer.MAX_ABBREV_LENGTH = data.get(cls.CONFIG_MAX_ABBREV_LENGTH, cls.MAX_ABBREV_LENGTH)
 
+        # Load memory optimization parameters if available
+        trainer.TYPE_FDIST_MIN_FREQ = data.get(cls.CONFIG_TYPE_FDIST_MIN_FREQ, cls.TYPE_FDIST_MIN_FREQ)
+        trainer.COLLOC_FDIST_MIN_FREQ = data.get(cls.CONFIG_COLLOC_FDIST_MIN_FREQ, cls.COLLOC_FDIST_MIN_FREQ)
+        trainer.SENT_STARTER_MIN_FREQ = data.get(cls.CONFIG_SENT_STARTER_MIN_FREQ, cls.SENT_STARTER_MIN_FREQ)
+        trainer.PRUNE_INTERVAL = data.get(cls.CONFIG_PRUNE_INTERVAL, cls.PRUNE_INTERVAL)
+        trainer.MEMORY_EFFICIENT = data.get(cls.CONFIG_MEMORY_EFFICIENT, cls.MEMORY_EFFICIENT)
+        trainer.CHUNK_SIZE = data.get(cls.CONFIG_CHUNK_SIZE, cls.CHUNK_SIZE)
+        
         # Load custom common abbreviations if provided
         if cls.CONFIG_COMMON_ABBREVS in data:
             trainer.COMMON_ABBREVS = data[cls.CONFIG_COMMON_ABBREVS]  # type: ignore  # need to access class var via instance

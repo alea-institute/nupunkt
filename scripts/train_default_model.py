@@ -156,13 +156,24 @@ def compare_storage_formats(trainer: PunktTrainer, output_dir: Path) -> None:
 
 
 def main() -> None:
-    """Train a default model and save it to the package models directory."""
+    """
+    Train a default model and save it to the package models directory.
+    
+    This script now uses memory optimization techniques by default:
+    - Memory-efficient mode with early frequency pruning
+    - Batch training to process text in manageable chunks
+    
+    These optimizations significantly reduce memory usage while maintaining model quality.
+    Use --no-memory-efficient or --no-batches to disable these optimizations if needed.
+    """
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Train the default model for nupunkt")
+    parser = argparse.ArgumentParser(
+        description="Train the default model for nupunkt with memory-efficient processing enabled by default"
+    )
     parser.add_argument(
         "--max-samples",
         type=int,
-        default=40000,
+        default=None,
         help="Maximum number of samples to use from each training file",
     )
     parser.add_argument(
@@ -181,6 +192,47 @@ def main() -> None:
     )
     parser.add_argument("--level", type=int, default=6, help="Compression level (0-9)")
     parser.add_argument("--compare", action="store_true", help="Compare different storage formats")
+    # Memory optimization options
+    parser.add_argument(
+        "--no-memory-efficient", 
+        action="store_true",
+        help="Disable memory-efficient training mode (on by default)"
+    )
+    parser.add_argument(
+        "--batch-size", 
+        type=int, 
+        default=1000000,
+        help="Batch size (in characters) for batch training"
+    )
+    parser.add_argument(
+        "--prune-freq", 
+        type=int, 
+        default=10000,
+        help="How often to prune distributions (token count)"
+    )
+    parser.add_argument(
+        "--min-type-freq", 
+        type=int, 
+        default=3,
+        help="Minimum frequency to keep a type (higher values reduce memory usage)"
+    )
+    parser.add_argument(
+        "--min-starter-freq", 
+        type=int, 
+        default=5,
+        help="Minimum frequency to keep a sentence starter"
+    )
+    parser.add_argument(
+        "--min-colloc-freq", 
+        type=int, 
+        default=3,
+        help="Minimum frequency to keep a collocation"
+    )
+    parser.add_argument(
+        "--no-batches", 
+        action="store_true",
+        help="Disable batch training mode (on by default)"
+    )
     args = parser.parse_args()
 
     # Set paths
@@ -228,9 +280,30 @@ def main() -> None:
     # combined_text = train_text1 + "\n\n" + train_text2
     combined_text = train_text1 + "\n\n" + train_text2
 
-    # Train model
+    # Configure memory optimization settings - now enabled by default
+    memory_settings = {"memory_efficient": True}
+    if args.no_memory_efficient:
+        memory_settings["memory_efficient"] = False
+        print("\n=== Memory-Efficient Training Mode DISABLED ===")
+    else:
+        print("\n=== Using Memory-Efficient Training Mode ===")
+        
+    # Create trainer with memory settings
     print("\n=== Training Default Model ===")
-    trainer = PunktTrainer(verbose=True)
+    trainer = PunktTrainer(verbose=True, **memory_settings)
+    
+    # Configure memory optimization parameters
+    if memory_settings["memory_efficient"]:
+        trainer.TYPE_FDIST_MIN_FREQ = args.min_type_freq
+        trainer.SENT_STARTER_MIN_FREQ = args.min_starter_freq
+        trainer.COLLOC_FDIST_MIN_FREQ = args.min_colloc_freq
+        trainer.PRUNE_INTERVAL = args.prune_freq
+        
+        print(f"Memory optimization parameters:")
+        print(f"  - min_type_freq: {args.min_type_freq}")
+        print(f"  - min_starter_freq: {args.min_starter_freq}")
+        print(f"  - min_colloc_freq: {args.min_colloc_freq}")
+        print(f"  - prune_interval: {args.prune_freq}")
 
     # Add abbreviations from loaded files
     print(f"\nAdding {len(abbreviations)} abbreviations")
@@ -239,8 +312,21 @@ def main() -> None:
         trainer._params.abbrev_types.add(abbr.lower())
         initial_abbrevs.add(abbr.lower())
 
-    # Train on the combined text
-    trainer.train(combined_text)
+    # Train using batch mode by default unless disabled
+    if args.no_batches:
+        # Train on the combined text in one go
+        print("\nBatch training disabled, processing text in one pass")
+        trainer.train(combined_text)
+    else:
+        # Use batch mode by default
+        print(f"\nUsing batch training with batch size: {args.batch_size} characters")
+        
+        # Convert text to batches
+        batches = list(PunktTrainer.text_to_batches(combined_text, batch_size=args.batch_size))
+        print(f"Split text into {len(batches)} batches")
+        
+        # Train in batches
+        trainer.train_batches(batches, verbose=True)
 
     # Print detailed statistics about the trained model
     print_training_details(trainer, initial_abbrevs)

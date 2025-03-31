@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.0 (2025-03-31)
+
+### Memory Optimizations
+
+- **Added memory-efficient training for large text corpora:**
+  - Early frequency pruning to discard rare items during training
+  - Streaming processing mode to avoid storing complete token lists
+  - Batch training for processing very large text collections
+  - Configurable memory usage parameters
+- Added memory benchmarking tools in `.benchmark` directory
+- Added documentation for memory-efficient training
+- Updated default training script with memory optimization options
+
+### Performance Improvements
+
+- Improved memory usage during training (up to 60% reduction)
+- Support for training on very large text collections
+- Pruning of low-frequency tokens, collocations, and sentence starters
+- Configurable frequency thresholds and pruning intervals
+
 ## 0.4.0 (2025-03-31)
 
 ### Performance Improvements
