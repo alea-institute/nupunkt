@@ -17,6 +17,17 @@ import os
 import sys
 from pathlib import Path
 from typing import List, Optional
+import time
+
+# For progress bars
+try:
+    from tqdm import tqdm
+except ImportError:
+    # Provide a simple fallback if tqdm is not installed
+    def tqdm(iterable=None, **kwargs):
+        if iterable is not None:
+            return iterable
+        return lambda x: x
 
 # Add the parent directory to the path so we can import nupunkt
 script_dir = Path(__file__).parent
@@ -47,13 +58,18 @@ def load_abbreviations(file_path: Path) -> List[str]:
 
 
 def load_jsonl_text(file_path: Path, max_samples: Optional[int] = None) -> str:
-    """Load text from a compressed JSONL file."""
-    print(f"Loading text from {file_path}...")
+    """Load text from a compressed JSONL file with progress bar."""
     combined_text = ""
     sample_count = 0
-
+    
+    # Get total line count for the progress bar if max_samples is not set
+    total = max_samples or sum(1 for _ in gzip.open(file_path, "rt", encoding="utf-8"))
+    
+    # Use tqdm to show progress
+    desc = f"Loading from {file_path.name}"
     with gzip.open(file_path, "rt", encoding="utf-8") as f:
-        for line in f:
+        # Create progress bar
+        for line in tqdm(f, total=total, desc=desc, unit="samples"):
             try:
                 data = json.loads(line)
                 if "text" in data:
@@ -62,97 +78,115 @@ def load_jsonl_text(file_path: Path, max_samples: Optional[int] = None) -> str:
                     if max_samples and sample_count >= max_samples:
                         break
             except json.JSONDecodeError:
-                print(f"Warning: Could not parse line in {file_path}")
+                tqdm.write(f"Warning: Could not parse line in {file_path}")
                 continue
 
-    print(f"Loaded {sample_count} text samples, total size: {len(combined_text)} characters")
+    # Print summary at the end
+    tqdm.write(f"Loaded {sample_count} text samples, total size: {len(combined_text):,} characters")
     return combined_text
 
 
 def print_training_details(trainer: PunktTrainer, initial_abbrevs: set) -> None:
     """Print detailed information about the trained model."""
-    print("\n=== Training Details ===")
+    tqdm.write("\n" + "=" * 80)
+    tqdm.write("TRAINING RESULTS SUMMARY")
+    tqdm.write("=" * 80)
 
     # Print hyperparameters
-    print("\nHyperparameters:")
-    print(f"  - Abbreviation threshold:      {trainer.ABBREV}")
-    print(f"  - Abbreviation backoff:        {trainer.ABBREV_BACKOFF}")
-    print(f"  - Collocation threshold:       {trainer.COLLOCATION}")
-    print(f"  - Sentence starter threshold:  {trainer.SENT_STARTER}")
-    print(f"  - Minimum collocation freq:    {trainer.MIN_COLLOC_FREQ}")
-    print(f"  - Maximum abbreviation length: {trainer.MAX_ABBREV_LENGTH}")
+    tqdm.write("\nHyperparameters:")
+    tqdm.write(f"  - Abbreviation threshold:      {trainer.ABBREV}")
+    tqdm.write(f"  - Abbreviation backoff:        {trainer.ABBREV_BACKOFF}")
+    tqdm.write(f"  - Collocation threshold:       {trainer.COLLOCATION}")
+    tqdm.write(f"  - Sentence starter threshold:  {trainer.SENT_STARTER}")
+    tqdm.write(f"  - Minimum collocation freq:    {trainer.MIN_COLLOC_FREQ}")
+    tqdm.write(f"  - Maximum abbreviation length: {trainer.MAX_ABBREV_LENGTH}")
 
-    # Print abbreviation stats
+    # Memory optimization parameters
+    if trainer.MEMORY_EFFICIENT:
+        tqdm.write("\nMemory Optimization Settings:")
+        tqdm.write(f"  - Min type frequency:          {trainer.TYPE_FDIST_MIN_FREQ}")
+        tqdm.write(f"  - Min sentence starter freq:   {trainer.SENT_STARTER_MIN_FREQ}")
+        tqdm.write(f"  - Min collocation frequency:   {trainer.COLLOC_FDIST_MIN_FREQ}")
+        tqdm.write(f"  - Pruning interval:            {trainer.PRUNE_INTERVAL}")
+
+    # Get parameters and stats
     params = trainer.get_params()
     loaded_abbrev_count = len(initial_abbrevs)
     current_abbrevs = set(params.abbrev_types)
     learned_abbrevs = current_abbrevs - initial_abbrevs
     learned_abbrev_count = len(learned_abbrevs)
 
-    # Print abbreviation stats
-    print("\nAbbreviations Stats:")
-    print(f"  - Total abbreviations:         {len(params.abbrev_types)}")
-    print(f"  - Loaded from file:            {loaded_abbrev_count}")
-    print(f"  - Learned during training:     {learned_abbrev_count}")
+    # Print model statistics
+    tqdm.write("\nModel Statistics:")
+    tqdm.write(f"  - Abbreviations:               {len(params.abbrev_types):,}")
+    tqdm.write(f"    - Loaded from file:          {loaded_abbrev_count:,}")
+    tqdm.write(f"    - Learned during training:   {learned_abbrev_count:,}")
+    tqdm.write(f"  - Collocations:                {len(params.collocations):,}")
+    tqdm.write(f"  - Sentence starters:           {len(params.sent_starters):,}")
 
     # Print some learned abbreviations (if any)
     if learned_abbrevs:
-        print("\nSample of learned abbreviations (up to 20):")
+        tqdm.write("\nSample of learned abbreviations (up to 20):")
         for abbr in sorted(list(learned_abbrevs))[:20]:
-            print(f"  - {abbr}")
-
-    # Print collocations stats
-    print("\nCollocations Stats:")
-    print(f"  - Total collocations:          {len(params.collocations)}")
+            tqdm.write(f"  - {abbr}")
 
     # Print some sample collocations
     if params.collocations:
-        print("\nSample of collocations (up to 20):")
+        tqdm.write("\nSample of collocations (up to 20):")
         sorted_collocs = sorted(params.collocations)
         for w1, w2 in sorted_collocs[:20]:
-            print(f"  - {w1} {w2}")
-
-    # Print sentence starters stats
-    print("\nSentence Starters Stats:")
-    print(f"  - Total sentence starters:     {len(params.sent_starters)}")
+            tqdm.write(f"  - {w1} {w2}")
 
     # Print some sample sentence starters
     if params.sent_starters:
-        print("\nSample of sentence starters (up to 20):")
+        tqdm.write("\nSample of sentence starters (up to 20):")
         sorted_starters = sorted(params.sent_starters)
         for starter in sorted_starters[:20]:
-            print(f"  - {starter}")
+            tqdm.write(f"  - {starter}")
 
-    print("\n" + "=" * 60)
+    tqdm.write("\n" + "=" * 80)
 
 
 def compare_storage_formats(trainer: PunktTrainer, output_dir: Path) -> None:
-    """Compare different storage formats for the model."""
-    print("\n=== Comparing Storage Formats ===")
+    """Compare different storage formats for the model with progress bar."""
+    tqdm.write("\n" + "=" * 80)
+    tqdm.write("STORAGE FORMAT COMPARISON")
+    tqdm.write("=" * 80)
 
     # Get model data
     data = trainer.get_params().to_json()
 
     # Compare formats
     os.makedirs(output_dir, exist_ok=True)
+    
+    # Start timer to measure comparison time
+    start_time = time.time()
+    tqdm.write("\nComparing storage formats (this may take a moment)...")
+    
+    # Run comparison with formats
     format_sizes = compare_formats(data, output_dir)
+    
+    elapsed_time = time.time() - start_time
+    tqdm.write(f"Comparison completed in {elapsed_time:.2f} seconds")
 
     # Print sizes in human-readable format
-    print("\nStorage Format Comparison:")
-    print(f"{'Format':<30} {'Size':<10} {'Ratio':<10}")
-    print("-" * 50)
+    tqdm.write("\nStorage Format Comparison:")
+    tqdm.write(f"{'Format':<30} {'Size':<10} {'Ratio':<10}")
+    tqdm.write("-" * 50)
 
     # Get the json size as reference for compression ratio
     json_size = format_sizes.get("json", 1)
 
+    # Sort by size for easier comparison
     for format_name, size in sorted(format_sizes.items(), key=lambda x: x[1]):
         ratio = size / json_size if json_size else 0
         size_str = f"{size / 1024:.2f} KB"
         ratio_str = f"{ratio:.3f}"
-        print(f"{format_name:<30} {size_str:<10} {ratio_str:<10}")
+        tqdm.write(f"{format_name:<30} {size_str:<10} {ratio_str:<10}")
 
-    print("\nRecommended format: binary_zlib_level6 or binary_lzma_level6")
-    print("Note: Binary formats require less deserialization overhead than JSON")
+    tqdm.write("\nRecommended format: binary_zlib_level6 or binary_lzma_level6")
+    tqdm.write("Note: Binary formats require less deserialization overhead than JSON")
+    tqdm.write("\n" + "=" * 80)
 
 
 def main() -> None:
@@ -284,13 +318,14 @@ def main() -> None:
     memory_settings = {"memory_efficient": True}
     if args.no_memory_efficient:
         memory_settings["memory_efficient"] = False
-        print("\n=== Memory-Efficient Training Mode DISABLED ===")
+        tqdm.write("\n=== Memory-Efficient Training Mode DISABLED ===")
     else:
-        print("\n=== Using Memory-Efficient Training Mode ===")
+        tqdm.write("\n=== Using Memory-Efficient Training Mode ===")
         
     # Create trainer with memory settings
-    print("\n=== Training Default Model ===")
-    trainer = PunktTrainer(verbose=True, **memory_settings)
+    tqdm.write("\n=== Training Default Model ===")
+    # Make trainer non-verbose since we'll use our own progress reporting
+    trainer = PunktTrainer(verbose=False, **memory_settings)
     
     # Configure memory optimization parameters
     if memory_settings["memory_efficient"]:
@@ -299,34 +334,51 @@ def main() -> None:
         trainer.COLLOC_FDIST_MIN_FREQ = args.min_colloc_freq
         trainer.PRUNE_INTERVAL = args.prune_freq
         
-        print(f"Memory optimization parameters:")
-        print(f"  - min_type_freq: {args.min_type_freq}")
-        print(f"  - min_starter_freq: {args.min_starter_freq}")
-        print(f"  - min_colloc_freq: {args.min_colloc_freq}")
-        print(f"  - prune_interval: {args.prune_freq}")
+        tqdm.write("Memory optimization parameters:")
+        tqdm.write(f"  - min_type_freq: {args.min_type_freq}")
+        tqdm.write(f"  - min_starter_freq: {args.min_starter_freq}")
+        tqdm.write(f"  - min_colloc_freq: {args.min_colloc_freq}")
+        tqdm.write(f"  - prune_interval: {args.prune_freq}")
 
-    # Add abbreviations from loaded files
-    print(f"\nAdding {len(abbreviations)} abbreviations")
+    # Add abbreviations from loaded files with progress bar
     initial_abbrevs = set()
-    for abbr in abbreviations:
+    tqdm.write(f"\nAdding {len(abbreviations)} abbreviations...")
+    
+    # Use tqdm for abbreviation loading
+    for abbr in tqdm(abbreviations, desc="Adding abbreviations", unit="abbr"):
         trainer._params.abbrev_types.add(abbr.lower())
         initial_abbrevs.add(abbr.lower())
+
+    # Start timing training process
+    start_time = time.time()
 
     # Train using batch mode by default unless disabled
     if args.no_batches:
         # Train on the combined text in one go
-        print("\nBatch training disabled, processing text in one pass")
+        tqdm.write("\nBatch training disabled, processing text in one pass")
+        
+        # Since the trainer is not verbose, we need to show progress here
+        tqdm.write("Starting training...")
         trainer.train(combined_text)
+        
     else:
         # Use batch mode by default
-        print(f"\nUsing batch training with batch size: {args.batch_size} characters")
-        
         # Convert text to batches
-        batches = list(PunktTrainer.text_to_batches(combined_text, batch_size=args.batch_size))
-        print(f"Split text into {len(batches)} batches")
+        tqdm.write(f"\nUsing batch training with batch size: {args.batch_size:,} characters")
+        tqdm.write("Splitting text into batches...")
         
-        # Train in batches
-        trainer.train_batches(batches, verbose=True)
+        # Get batches with progress tracking
+        batches = list(PunktTrainer.text_to_batches(combined_text, batch_size=args.batch_size))
+        tqdm.write(f"Split text into {len(batches)} batches, starting training")
+        
+        # Create progress bar for batches
+        for i, batch in enumerate(tqdm(batches, desc="Training on batches", unit="batch")):
+            # Train on this batch non-verbosely (we're showing progress with tqdm)
+            trainer.train(batch, verbose=False, finalize=(i == len(batches)-1))
+            
+    # Calculate total training time
+    training_time = time.time() - start_time
+    tqdm.write(f"\nTraining completed in {training_time:.2f} seconds")
 
     # Print detailed statistics about the trained model
     print_training_details(trainer, initial_abbrevs)
@@ -336,17 +388,22 @@ def main() -> None:
         compare_storage_formats(trainer, models_dir)
 
     # Save model in the requested format
-    print(f"\n=== Saving Model to {model_path} ===")
-    trainer.get_params().save(
-        model_path,
-        format_type=args.format,
-        compression_level=args.level,
-        compression_method=args.compression,
-    )
-    print(f"Model saved successfully to {model_path}")
+    tqdm.write(f"\n=== Saving Model to {model_path} ===")
+    
+    # Use tqdm to display progress indication during saving
+    with tqdm(total=1, desc="Saving model", unit="model") as pbar:
+        trainer.get_params().save(
+            model_path,
+            format_type=args.format,
+            compression_level=args.level,
+            compression_method=args.compression,
+        )
+        pbar.update(1)
+    
+    tqdm.write(f"Model saved successfully to {model_path}")
 
     # Test the model
-    print("\n=== Testing Default Model ===")
+    tqdm.write("\n=== Testing Model Performance ===")
     tokenizer = PunktSentenceTokenizer(trainer.get_params())
 
     test_cases = [
@@ -358,15 +415,25 @@ def main() -> None:
         "Under 18 U.S.C. 12, this is a legal citation. The next sentence begins here.",
     ]
 
-    print("\nTokenizing sample texts:")
-    for test in test_cases:
-        print("\nText: ", test)
+    tqdm.write("\nTokenizing sample texts:")
+    
+    # Use enumeration with tqdm for test case progress
+    for i, test in enumerate(tqdm(test_cases, desc="Testing tokenization", unit="text")):
+        # Use tqdm.write to avoid overwriting progress bar
+        tqdm.write(f"\nText {i+1}: {test}")
         sentences = tokenizer.tokenize(test)
-        for i, sentence in enumerate(sentences, 1):
-            print(f"  Sentence {i}: {sentence.strip()}")
+        for j, sentence in enumerate(sentences, 1):
+            tqdm.write(f"  Sentence {j}: {sentence.strip()}")
 
-    print("\nDefault model created successfully!")
-    print(f"Model saved to: {model_path}")
+    # Calculate total file size
+    model_size_bytes = model_path.stat().st_size
+    model_size_kb = model_size_bytes / 1024
+    
+    tqdm.write("\n" + "=" * 80)
+    tqdm.write("TRAINING COMPLETED SUCCESSFULLY")
+    tqdm.write(f"Model saved to: {model_path}")
+    tqdm.write(f"Model size: {model_size_kb:.2f} KB")
+    tqdm.write("=" * 80)
 
 
 if __name__ == "__main__":
