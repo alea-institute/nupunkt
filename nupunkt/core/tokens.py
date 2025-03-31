@@ -8,6 +8,15 @@ in the Punkt algorithm and calculates various derived properties.
 import re
 from dataclasses import dataclass, field
 
+# Compiled regex patterns for better performance
+_RE_NON_WORD_DOT = re.compile(r"[^\w.]")
+_RE_NUMBER = re.compile(r"^-?[\.,]?\d[\d,\.-]*\.?$")
+_RE_ELLIPSIS = re.compile(r"\.\.+$")
+_RE_SPACED_ELLIPSIS = re.compile(r"\.\s+\.\s+\.")
+_RE_INITIAL = re.compile(r"[^\W\d]\.")
+_RE_ALPHA = re.compile(r"[^\W\d]+")
+_RE_NON_PUNCT = re.compile(r"[^\W\d]")
+
 
 @dataclass
 class PunktToken:
@@ -58,7 +67,7 @@ class PunktToken:
 
         self.valid_abbrev_candidate = (
             self.period_final
-            and not re.search(r"[^\w.]", self.tok)
+            and not _RE_NON_WORD_DOT.search(self.tok)
             and not (self.type == "##number##")
             and alpha_count >= digit_count  # Must have at least as many letters as digits
             and alpha_count > 0  # Must have at least one letter
@@ -80,7 +89,7 @@ class PunktToken:
             The normalized type (##number## for numbers, lowercase form for others)
         """
         # Normalize numbers
-        if re.match(r"^-?[\.,]?\d[\d,\.-]*\.?$", tok):
+        if _RE_NUMBER.match(tok):
             return "##number##"
         return tok.lower()
 
@@ -122,7 +131,7 @@ class PunktToken:
         3. Periods separated by spaces (. . ., .  .  .)
         """
         # Check for standard ellipsis (... or longer)
-        if bool(re.search(r"\.\.+$", self.tok)):
+        if bool(_RE_ELLIPSIS.search(self.tok)):
             return True
 
         # Check for unicode ellipsis
@@ -130,7 +139,7 @@ class PunktToken:
             return True
 
         # Check for spaced ellipsis (. . ., . .  ., etc.)
-        if re.search(r"\.\s+\.\s+\.", self.tok):
+        if _RE_SPACED_ELLIPSIS.search(self.tok):
             return True
 
         return False
@@ -143,17 +152,17 @@ class PunktToken:
     @property
     def is_initial(self) -> bool:
         """Check if the token is an initial (single letter followed by a period)."""
-        return bool(re.fullmatch(r"[^\W\d]\.", self.tok))
+        return bool(_RE_INITIAL.fullmatch(self.tok))
 
     @property
     def is_alpha(self) -> bool:
         """Check if the token is alphabetic (contains only letters)."""
-        return bool(re.fullmatch(r"[^\W\d]+", self.tok))
+        return bool(_RE_ALPHA.fullmatch(self.tok))
 
     @property
     def is_non_punct(self) -> bool:
         """Check if the token contains non-punctuation characters."""
-        return bool(re.search(r"[^\W\d]", self.type))
+        return bool(_RE_NON_PUNCT.search(self.type))
 
     def __str__(self) -> str:
         """Get a string representation of the token with annotation flags."""

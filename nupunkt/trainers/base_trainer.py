@@ -11,6 +11,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, ClassVar, Dict, Iterator, List, Optional, Set, Tuple, Type, Union, Counter as CounterType
 
+# Compiled regex patterns for better performance
+_RE_NON_WORD = re.compile(r"[^\w]")
+_RE_NON_ALPHA_NUMERIC = re.compile(r"[^\w.]")
+_RE_NON_PUNCT = re.compile(r"[^\W\d]")
+
 from nupunkt.core.base import PunktBase
 from nupunkt.core.constants import (
     ORTHO_BEG_UC,
@@ -152,7 +157,7 @@ class PunktTrainer(PunktBase):
             # Restore original abbreviations, but respect newly learned ones too
             for abbrev in original_abbrevs:
                 # Only add valid abbreviation candidates (alphanumeric only)
-                if not re.search(r"[^\w]", abbrev) and len(abbrev) <= self.MAX_ABBREV_LENGTH:
+                if not _RE_NON_WORD.search(abbrev) and len(abbrev) <= self.MAX_ABBREV_LENGTH:
                     self._params.abbrev_types.add(abbrev)
 
             if verbose:
@@ -274,12 +279,12 @@ class PunktTrainer(PunktBase):
             Tuples of (token_type, score, is_add) where is_add indicates whether to add or remove
         """
         for typ in types:
-            if not re.search(r"[^\W\d]", typ) or typ == "##number##":
+            if not _RE_NON_PUNCT.search(typ) or typ == "##number##":
                 continue
 
             # Skip tokens with non-alphanumeric characters (except periods)
             # This excludes tokens with punctuation like #, %, $, etc.
-            if re.search(r"[^\w.]", typ):
+            if _RE_NON_ALPHA_NUMERIC.search(typ):
                 continue
 
             if typ.endswith("."):
@@ -302,7 +307,7 @@ class PunktTrainer(PunktBase):
 
             # Allow periods within abbreviation candidates (like U.S.C.)
             # but still reject other non-alphanumeric characters
-            if re.search(r"[^\w.]", candidate):
+            if _RE_NON_ALPHA_NUMERIC.search(candidate):
                 if not is_add and candidate in self._params.abbrev_types:
                     # If it's already in abbrev_types but has invalid chars, remove it
                     yield candidate, 0.0, False
@@ -418,13 +423,13 @@ class PunktTrainer(PunktBase):
         typ = cur_tok.type_no_sentperiod
 
         # Skip tokens with non-alphanumeric characters (except periods)
-        if re.search(r"[^\w.]", typ):
+        if _RE_NON_ALPHA_NUMERIC.search(typ):
             return False
 
         # Allow internal periods in abbreviations (like U.S.C.)
         # but still reject other non-alphanumeric characters
         base_typ = typ[:-1] if typ.endswith(".") else typ
-        if re.search(r"[^\w.]", base_typ):
+        if _RE_NON_ALPHA_NUMERIC.search(base_typ):
             return False
 
         # For tokens with internal periods (like U.S.C), get the non-period characters
