@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 (2025-03-31)
+
+### Performance Improvements
+
+- **Major tokenization performance optimization:**
+  - Normal text processing: 31M chars/sec (9% faster)
+  - Text without sentence endings: 1.4B chars/sec (383% faster)
+  - Overall tokenization time reduced by 11%
+  - Function call count reduced by 22%
+- PunktToken initialization optimized with token caching and pre-computed properties
+- Added fast path optimizations for texts without sentence boundaries
+- Improved string handling and regex operations in hot spots
+- Added profiling tools for performance analysis and optimization
+
 ## 0.3.0 (2025-03-31)
 
 ### New Features

@@ -5,7 +5,7 @@ It learns to identify sentence boundaries in text, even when periods are used fo
 abbreviations, ellipses, and other non-sentence-ending contexts.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.4.0"
 
 # Core classes
 from nupunkt.core.language_vars import PunktLanguageVars
