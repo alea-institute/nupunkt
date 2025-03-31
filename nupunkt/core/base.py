@@ -6,7 +6,6 @@ This module provides the base class for Punkt tokenizers and trainers.
 
 from typing import Iterator, Optional, Type
 
-from nupunkt.core.constants import ORTHO_MAP
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
@@ -15,10 +14,11 @@ from nupunkt.core.tokens import PunktToken
 class PunktBase:
     """
     Base class for Punkt tokenizers and trainers.
-    
+
     This class provides common functionality used by both the trainer and tokenizer,
     including tokenization and first-pass annotation of tokens.
     """
+
     def __init__(
         self,
         lang_vars: Optional[PunktLanguageVars] = None,
@@ -27,7 +27,7 @@ class PunktBase:
     ) -> None:
         """
         Initialize the PunktBase instance.
-        
+
         Args:
             lang_vars: Language-specific variables
             token_cls: The token class to use
@@ -40,10 +40,10 @@ class PunktBase:
     def _tokenize_words(self, plaintext: str) -> Iterator[PunktToken]:
         """
         Tokenize text into words, maintaining paragraph and line-start information.
-        
+
         Args:
             plaintext: The text to tokenize
-            
+
         Yields:
             PunktToken instances for each token
         """
@@ -62,12 +62,12 @@ class PunktBase:
     def _annotate_first_pass(self, tokens: Iterator[PunktToken]) -> Iterator[PunktToken]:
         """
         Perform first-pass annotation on tokens.
-        
+
         This annotates tokens with sentence breaks, abbreviations, and ellipses.
-        
+
         Args:
             tokens: The tokens to annotate
-            
+
         Yields:
             Annotated tokens
         """
@@ -78,7 +78,7 @@ class PunktBase:
     def _first_pass_annotation(self, token: PunktToken) -> None:
         """
         Annotate a token with sentence breaks, abbreviations, and ellipses.
-        
+
         Args:
             token: The token to annotate
         """
@@ -96,7 +96,7 @@ class PunktBase:
             else:
                 # For valid candidates, check if they are known abbreviations
                 candidate = token.tok[:-1].lower()
-                
+
                 # Check if the token itself is a known abbreviation
                 if candidate in self._params.abbrev_types:
                     token.abbr = True

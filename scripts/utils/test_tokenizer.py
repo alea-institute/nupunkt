@@ -8,9 +8,10 @@ This script:
 3. Shows the resulting sentences
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
+from typing import Optional
 
 # Add the parent directory to the path so we can import nupunkt
 script_dir = Path(__file__).parent
@@ -19,6 +20,7 @@ sys.path.append(str(root_dir))
 
 # Import nupunkt
 from nupunkt.models import load_default_model
+
 
 def get_test_text() -> str:
     """Return sample test text if none is provided."""
@@ -36,10 +38,11 @@ She scored 92 vs. 85 in the previous match. Her performance has improved.
 The temperature was 32 deg. C. It was quite hot that day.
     """
 
-def tokenize_text(text: str, model_path: Path = None) -> None:
+
+def tokenize_text(text: str, model_path: Optional[Path] = None) -> None:
     """
     Tokenize the given text and print the results.
-    
+
     Args:
         text: The text to tokenize
         model_path: Optional path to a custom model
@@ -48,42 +51,45 @@ def tokenize_text(text: str, model_path: Path = None) -> None:
     print("Loading default model...")
     tokenizer = load_default_model()
     print("Model loaded successfully.")
-    
+
     # Tokenize the text
     print("\n=== Tokenizing Text ===")
     print(f"Input text:\n{text}")
-    
+
     sentences = tokenizer.tokenize(text)
-    
+
     print("\n=== Tokenization Results ===")
     for i, sentence in enumerate(sentences, 1):
         print(f"Sentence {i}: {sentence.strip()}")
-    
+
     print(f"\nFound {len(sentences)} sentences.")
 
-def main():
+
+def main() -> None:
     """Process command-line arguments and tokenize text."""
     parser = argparse.ArgumentParser(description="Test the nupunkt tokenizer on custom text")
-    parser.add_argument("--text", type=str, default=None,
-                        help="Text to tokenize (default: use sample text)")
-    parser.add_argument("--file", type=str, default=None,
-                        help="Path to a file containing text to tokenize")
-    parser.add_argument("--model", type=str, default=None,
-                        help="Path to a custom model file")
-    
+    parser.add_argument(
+        "--text", type=str, default=None, help="Text to tokenize (default: use sample text)"
+    )
+    parser.add_argument(
+        "--file", type=str, default=None, help="Path to a file containing text to tokenize"
+    )
+    parser.add_argument("--model", type=str, default=None, help="Path to a custom model file")
+
     args = parser.parse_args()
-    
+
     # Get the text to tokenize
     if args.file:
-        with open(args.file, 'r', encoding='utf-8') as f:
+        with open(args.file, "r", encoding="utf-8") as f:
             text = f.read()
     elif args.text:
         text = args.text
     else:
         text = get_test_text()
-    
+
     # Tokenize the text
     tokenize_text(text, args.model)
+
 
 if __name__ == "__main__":
     main()

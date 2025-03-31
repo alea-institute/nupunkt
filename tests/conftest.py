@@ -1,12 +1,15 @@
 """Pytest configuration for nupunkt tests."""
 
 import os
-import pytest
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
-from nupunkt import PunktParameters, PunktLanguageVars, PunktToken
-from nupunkt import PunktTrainer, PunktSentenceTokenizer
+import pytest
+
+from nupunkt import (
+    PunktParameters,
+    PunktSentenceTokenizer,
+)
 
 
 @pytest.fixture
@@ -71,12 +74,12 @@ def create_test_data(data_dir) -> None:
     # Create a small JSONL file for testing
     os.makedirs(data_dir, exist_ok=True)
     jsonl_path = data_dir / "test_small.jsonl"
-    
+
     with open(jsonl_path, "w", encoding="utf-8") as f:
         f.write('{"text": "This is sentence one. This is sentence two."}\n')
         f.write('{"text": "Dr. Smith visited Mr. Jones. They discussed the U.S.A."}\n')
         f.write('{"text": "This contains a number 3.14 which is not an abbreviation."}\n')
-    
+
     # Create a mixed test file
     text_path = data_dir / "mixed_text.txt"
     with open(text_path, "w", encoding="utf-8") as f:
@@ -87,5 +90,5 @@ def create_test_data(data_dir) -> None:
         
         Here are some numbers: 3.14, 2.71, and 1.62 which should not be treated as abbreviations.
         """)
-    
+
     return None

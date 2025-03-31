@@ -1,7 +1,7 @@
 """
 Token module for nupunkt.
 
-This module provides the PunktToken class, which represents a token 
+This module provides the PunktToken class, which represents a token
 in the Punkt algorithm and calculates various derived properties.
 """
 
@@ -13,10 +13,11 @@ from dataclasses import dataclass, field
 class PunktToken:
     """
     Represents a token in the Punkt algorithm.
-    
+
     This class contains the token string and various properties and flags that
     indicate its role in sentence boundary detection.
     """
+
     tok: str
     parastart: bool = False
     linestart: bool = False
@@ -32,7 +33,7 @@ class PunktToken:
     def __post_init__(self) -> None:
         """
         Initialize derived attributes after instance creation.
-        
+
         This method calculates:
         - Whether the token ends with a period
         - The token type (normalized form)
@@ -40,29 +41,29 @@ class PunktToken:
         """
         self.period_final = self.tok.endswith(".")
         self.type = self._get_type(self.tok)
-        
+
         # Determine if token could be a valid abbreviation candidate
         # Rules:
         # 1. Must end with a period
         # 2. Only alphanumeric characters and periods allowed (no other special punctuation)
         # 3. Not a pure number
         # 4. Must have at least as many alphabet chars as digits
-        
+
         # For tokens with internal periods (like U.S.C), get the non-period characters for counting
         token_no_periods = self.tok.replace(".", "")
-        
+
         # Count alphabet and digit characters in the non-period version
         alpha_count = sum(1 for c in token_no_periods if c.isalpha())
         digit_count = sum(1 for c in token_no_periods if c.isdigit())
-        
+
         self.valid_abbrev_candidate = (
-            self.period_final and 
-            not re.search(r"[^\w.]", self.tok) and
-            not (self.type == "##number##") and
-            alpha_count >= digit_count and  # Must have at least as many letters as digits
-            alpha_count > 0  # Must have at least one letter
+            self.period_final
+            and not re.search(r"[^\w.]", self.tok)
+            and not (self.type == "##number##")
+            and alpha_count >= digit_count  # Must have at least as many letters as digits
+            and alpha_count > 0  # Must have at least one letter
         )
-        
+
         # If token has a period but contains other punctuation, it can't be an abbreviation
         if self.period_final and not self.valid_abbrev_candidate:
             self.abbr = False
@@ -71,10 +72,10 @@ class PunktToken:
     def _get_type(tok: str) -> str:
         """
         Get the normalized type of a token.
-        
+
         Args:
             tok: The token string
-            
+
         Returns:
             The normalized type (##number## for numbers, lowercase form for others)
         """
@@ -123,15 +124,15 @@ class PunktToken:
         # Check for standard ellipsis (... or longer)
         if bool(re.search(r"\.\.+$", self.tok)):
             return True
-            
+
         # Check for unicode ellipsis
         if self.tok == "\u2026" or self.tok.endswith("\u2026"):
             return True
-            
+
         # Check for spaced ellipsis (. . ., . .  ., etc.)
         if re.search(r"\.\s+\.\s+\.", self.tok):
             return True
-            
+
         return False
 
     @property

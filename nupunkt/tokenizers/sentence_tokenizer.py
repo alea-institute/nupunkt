@@ -4,13 +4,12 @@ Sentence tokenizer module for nupunkt.
 This module provides the main tokenizer class for sentence boundary detection.
 """
 
-import json
 import re
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 from nupunkt.core.base import PunktBase
-from nupunkt.core.constants import ORTHO_BEG_LC, ORTHO_BEG_UC, ORTHO_LC, ORTHO_MID_UC, ORTHO_UC
+from nupunkt.core.constants import ORTHO_BEG_LC, ORTHO_LC, ORTHO_MID_UC, ORTHO_UC
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
@@ -21,10 +20,11 @@ from nupunkt.utils.iteration import pair_iter
 class PunktSentenceTokenizer(PunktBase):
     """
     Sentence tokenizer using the Punkt algorithm.
-    
+
     This class uses trained parameters to tokenize text into sentences,
     handling abbreviations, collocations, and other special cases.
     """
+
     def __init__(
         self,
         train_text: Optional[Any] = None,
@@ -35,7 +35,7 @@ class PunktSentenceTokenizer(PunktBase):
     ) -> None:
         """
         Initialize the tokenizer, optionally with training text or parameters.
-        
+
         Args:
             train_text: Training text or pre-trained parameters
             verbose: Whether to show verbose training information
@@ -49,104 +49,119 @@ class PunktSentenceTokenizer(PunktBase):
         if train_text:
             if isinstance(train_text, str):
                 trainer = PunktTrainer(
-                    train_text, 
-                    verbose=verbose, 
-                    lang_vars=self._lang_vars, 
+                    train_text,
+                    verbose=verbose,
+                    lang_vars=self._lang_vars,
                     token_cls=self._Token,
-                    include_common_abbrevs=include_common_abbrevs
+                    include_common_abbrevs=include_common_abbrevs,
                 )
                 self._params = trainer.get_params()
             else:
                 self._params = train_text
-                
+
         # Add common abbreviations if using an existing parameter set
-        if include_common_abbrevs and not isinstance(train_text, str) and hasattr(PunktTrainer, 'COMMON_ABBREVS'):
+        if (
+            include_common_abbrevs
+            and not isinstance(train_text, str)
+            and hasattr(PunktTrainer, "COMMON_ABBREVS")
+        ):
             for abbr in PunktTrainer.COMMON_ABBREVS:
                 self._params.abbrev_types.add(abbr)
             if verbose:
-                print(f"Added {len(PunktTrainer.COMMON_ABBREVS)} common abbreviations to tokenizer.")
-                
+                print(
+                    f"Added {len(PunktTrainer.COMMON_ABBREVS)} common abbreviations to tokenizer."
+                )
+
     def to_json(self) -> Dict[str, Any]:
         """
         Convert the tokenizer to a JSON-serializable dictionary.
-        
+
         Returns:
             A JSON-serializable dictionary
         """
         # Create a trainer to handle serialization
         trainer = PunktTrainer(lang_vars=self._lang_vars, token_cls=self._Token)
-        
+
         # Set the parameters
         trainer._params = self._params
         trainer._finalized = True
-        
+
         return trainer.to_json()
-        
+
     @classmethod
-    def from_json(cls, data: Dict[str, Any], lang_vars: Optional[PunktLanguageVars] = None,
-                 token_cls: Optional[Type[PunktToken]] = None) -> "PunktSentenceTokenizer":
+    def from_json(
+        cls,
+        data: Dict[str, Any],
+        lang_vars: Optional[PunktLanguageVars] = None,
+        token_cls: Optional[Type[PunktToken]] = None,
+    ) -> "PunktSentenceTokenizer":
         """
         Create a PunktSentenceTokenizer from a JSON dictionary.
-        
+
         Args:
             data: The JSON dictionary
             lang_vars: Optional language variables
             token_cls: Optional token class
-            
+
         Returns:
             A new PunktSentenceTokenizer instance
         """
         # First create a trainer from the JSON data
         trainer = PunktTrainer.from_json(data, lang_vars, token_cls)
-        
+
         # Then create a tokenizer with the parameters
         return cls(trainer.get_params(), lang_vars=lang_vars, token_cls=token_cls or PunktToken)
-        
-    def save(self, file_path: Union[str, Path], compress: bool = True, compression_level: int = 1) -> None:
+
+    def save(
+        self, file_path: Union[str, Path], compress: bool = True, compression_level: int = 1
+    ) -> None:
         """
         Save the tokenizer to a JSON file, optionally with LZMA compression.
-        
+
         Args:
             file_path: The path to save the file to
             compress: Whether to compress the file using LZMA (default: True)
             compression_level: LZMA compression level (0-9), lower is faster but less compressed
         """
         from nupunkt.utils.compression import save_compressed_json
+
         save_compressed_json(
-            self.to_json(), 
-            file_path, 
-            level=compression_level, 
-            use_compression=compress
+            self.to_json(), file_path, level=compression_level, use_compression=compress
         )
-            
+
     @classmethod
-    def load(cls, file_path: Union[str, Path], lang_vars: Optional[PunktLanguageVars] = None,
-            token_cls: Optional[Type[PunktToken]] = None) -> "PunktSentenceTokenizer":
+    def load(
+        cls,
+        file_path: Union[str, Path],
+        lang_vars: Optional[PunktLanguageVars] = None,
+        token_cls: Optional[Type[PunktToken]] = None,
+    ) -> "PunktSentenceTokenizer":
         """
         Load a PunktSentenceTokenizer from a JSON file, which may be compressed with LZMA.
-        
+
         Args:
             file_path: The path to load the file from
             lang_vars: Optional language variables
             token_cls: Optional token class
-            
+
         Returns:
             A new PunktSentenceTokenizer instance
         """
         from nupunkt.utils.compression import load_compressed_json
+
         data = load_compressed_json(file_path)
         return cls.from_json(data, lang_vars, token_cls)
-        
+
     def reconfigure(self, config: Dict[str, Any]) -> None:
         """
         Reconfigure the tokenizer with new settings.
-        
+
         Args:
             config: A dictionary with configuration settings
         """
         # Create a temporary trainer
         trainer = PunktTrainer.from_json(config, self._lang_vars, self._Token)
-        
+
         # If parameters are present in the config, use them
         if "parameters" in config:
             self._params = PunktParameters.from_json(config["parameters"])
@@ -158,24 +173,26 @@ class PunktSentenceTokenizer(PunktBase):
     def tokenize(self, text: str, realign_boundaries: bool = True) -> List[str]:
         """
         Tokenize text into sentences.
-        
+
         Args:
             text: The text to tokenize
             realign_boundaries: Whether to realign sentence boundaries
-            
+
         Returns:
             A list of sentences
         """
         return list(self.sentences_from_text(text, realign_boundaries))
 
-    def span_tokenize(self, text: str, realign_boundaries: bool = True) -> Iterator[Tuple[int, int]]:
+    def span_tokenize(
+        self, text: str, realign_boundaries: bool = True
+    ) -> Iterator[Tuple[int, int]]:
         """
         Tokenize text into sentence spans.
-        
+
         Args:
             text: The text to tokenize
             realign_boundaries: Whether to realign sentence boundaries
-            
+
         Yields:
             Tuples of (start, end) character offsets for each sentence
         """
@@ -188,11 +205,11 @@ class PunktSentenceTokenizer(PunktBase):
     def sentences_from_text(self, text: str, realign_boundaries: bool = True) -> List[str]:
         """
         Extract sentences from text.
-        
+
         Args:
             text: The text to tokenize
             realign_boundaries: Whether to realign sentence boundaries
-            
+
         Returns:
             A list of sentences
         """
@@ -201,10 +218,10 @@ class PunktSentenceTokenizer(PunktBase):
     def _get_last_whitespace_index(self, text: str) -> int:
         """
         Find the index of the last whitespace character in a string.
-        
+
         Args:
             text: The text to search
-            
+
         Returns:
             The index of the last whitespace character, or 0 if none
         """
@@ -216,19 +233,19 @@ class PunktSentenceTokenizer(PunktBase):
     def _match_potential_end_contexts(self, text: str) -> Iterator[Tuple[re.Match, str]]:
         """
         Find potential sentence end contexts in text.
-        
+
         Args:
             text: The text to search
-            
+
         Yields:
             Tuples of (match, context) for potential sentence ends
         """
         previous_slice = slice(0, 0)
         previous_match: Optional[re.Match] = None
-        
+
         # Special handling for ellipsis followed by capital letter
         ellipsis_positions = []
-        
+
         # Find positions of all ellipsis patterns in the text
         for ellipsis_pattern in [r"\.\.+", r"\.\s+\.\s+\.", "\u2026"]:
             for match in re.finditer(ellipsis_pattern, text):
@@ -236,7 +253,7 @@ class PunktSentenceTokenizer(PunktBase):
                 # Check if there's a capital letter after the ellipsis
                 if end_pos < len(text) - 1 and text[end_pos:].lstrip()[0:1].isupper():
                     ellipsis_positions.append(end_pos - 1)  # Position of the last period
-        
+
         # Standard processing for period contexts
         for match in self._lang_vars.period_context_pattern.finditer(text):
             before_text = text[previous_slice.stop : match.start()]
@@ -244,19 +261,27 @@ class PunktSentenceTokenizer(PunktBase):
             index_after_last_space = previous_slice.stop + idx + 1 if idx else previous_slice.start
             prev_word_slice = slice(index_after_last_space, match.start())
             if previous_match and previous_slice.stop <= prev_word_slice.start:
-                yield previous_match, text[previous_slice] + previous_match.group() + previous_match.group("after_tok")
+                yield (
+                    previous_match,
+                    text[previous_slice]
+                    + previous_match.group()
+                    + previous_match.group("after_tok"),
+                )
             previous_match = match
             previous_slice = prev_word_slice
         if previous_match:
-            yield previous_match, text[previous_slice] + previous_match.group() + previous_match.group("after_tok")
+            yield (
+                previous_match,
+                text[previous_slice] + previous_match.group() + previous_match.group("after_tok"),
+            )
 
     def _slices_from_text(self, text: str) -> Iterator[slice]:
         """
         Find slices of sentences in text.
-        
+
         Args:
             text: The text to slice
-            
+
         Yields:
             slice objects for each sentence
         """
@@ -273,11 +298,11 @@ class PunktSentenceTokenizer(PunktBase):
     def _realign_boundaries(self, text: str, slices: List[slice]) -> Iterator[slice]:
         """
         Realign sentence boundaries to handle trailing punctuation.
-        
+
         Args:
             text: The text
             slices: The sentence slices
-            
+
         Yields:
             Realigned sentence slices
         """
@@ -300,29 +325,29 @@ class PunktSentenceTokenizer(PunktBase):
     def text_contains_sentbreak(self, text: str) -> bool:
         """
         Check if text contains a sentence break.
-        
+
         Args:
             text: The text to check
-            
+
         Returns:
             True if the text contains a sentence break
         """
         tokens = list(self._annotate_tokens(self._tokenize_words(text)))
-        
+
         # Special handling for ellipsis followed by capitalized word
         for i, token in enumerate(tokens):
-            if token.ellipsis and i < len(tokens)-1 and tokens[i+1].first_upper:
+            if token.ellipsis and i < len(tokens) - 1 and tokens[i + 1].first_upper:
                 return True
-                
+
         return any(token.sentbreak for token in tokens)
 
     def _annotate_tokens(self, tokens: Iterator[PunktToken]) -> Iterator[PunktToken]:
         """
         Perform full annotation on tokens.
-        
+
         Args:
             tokens: The tokens to annotate
-            
+
         Yields:
             Fully annotated tokens
         """
@@ -333,12 +358,12 @@ class PunktSentenceTokenizer(PunktBase):
     def _annotate_second_pass(self, tokens: Iterator[PunktToken]) -> Iterator[PunktToken]:
         """
         Perform second-pass annotation on tokens.
-        
+
         This applies collocational and orthographic heuristics.
-        
+
         Args:
             tokens: The tokens to annotate
-            
+
         Yields:
             Tokens with second-pass annotation
         """
@@ -351,17 +376,17 @@ class PunktSentenceTokenizer(PunktBase):
     ) -> Optional[str]:
         """
         Perform second-pass annotation on a token.
-        
+
         Args:
             token1: The current token
             token2: The next token
-            
+
         Returns:
             A string describing the decision, or None
         """
         if token2 is None:
             return None
-            
+
         # Special handling for ellipsis - check this before period_final check
         if token1.is_ellipsis:
             # If next token starts with uppercase and is a known sentence starter,
@@ -369,7 +394,7 @@ class PunktSentenceTokenizer(PunktBase):
             # then mark this as a sentence break
             is_sent_starter = self._ortho_heuristic(token2)
             next_typ = token2.type_no_sentperiod
-            
+
             # Default behavior: ellipsis followed by uppercase letter is a sentence break
             if token2.first_upper:
                 token1.sentbreak = True
@@ -382,11 +407,11 @@ class PunktSentenceTokenizer(PunktBase):
             else:
                 token1.sentbreak = False
                 return "Ellipsis not followed by sentence starter"
-        
+
         # For tokens with periods but not ellipsis
         if not token1.period_final:
             return None
-            
+
         typ = token1.type_no_period
         next_typ = token2.type_no_sentperiod
         tok_is_initial = token1.is_initial
@@ -414,7 +439,12 @@ class PunktSentenceTokenizer(PunktBase):
                 token1.sentbreak = False
                 token1.abbr = True
                 return "Initial with orthographic heuristic"
-            if is_sent_starter == "unknown" and tok_is_initial and token2.first_upper and not (self._params.ortho_context.get(next_typ, 0) & ORTHO_LC):
+            if (
+                is_sent_starter == "unknown"
+                and tok_is_initial
+                and token2.first_upper
+                and not (self._params.ortho_context.get(next_typ, 0) & ORTHO_LC)
+            ):
                 token1.sentbreak = False
                 token1.abbr = True
                 return "Initial with special orthographic heuristic"
@@ -423,10 +453,10 @@ class PunktSentenceTokenizer(PunktBase):
     def _ortho_heuristic(self, token: PunktToken) -> bool | str:
         """
         Apply orthographic heuristics to determine if a token starts a sentence.
-        
+
         Args:
             token: The token to check
-            
+
         Returns:
             True if the token starts a sentence, False if not, "unknown" if uncertain
         """

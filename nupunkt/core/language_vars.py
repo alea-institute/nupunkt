@@ -13,16 +13,15 @@ from typing import Optional, Tuple
 class PunktLanguageVars:
     """
     Contains language-specific variables for Punkt sentence boundary detection.
-    
+
     This class encapsulates language-specific behavior, such as the
     characters that indicate sentence boundaries and the regular expressions
     used for various pattern matching tasks in the tokenization process.
     """
+
     sent_end_chars: Tuple[str, ...] = (".", "?", "!")
     internal_punctuation: str = ",:;"
-    re_boundary_realignment: re.Pattern = re.compile(
-        r'[\'"\)\]}]+?(?:\s+|(?=--)|$)', re.MULTILINE
-    )
+    re_boundary_realignment: re.Pattern = re.compile(r'[\'"\)\]}]+?(?:\s+|(?=--)|$)', re.MULTILINE)
     _re_word_start: str = r"[^\(\"\`{\[:;&\#\*@\)}\]\-,]"
     _re_multi_char_punct: str = r"(?:\-{2,}|\.{2,}|(?:\.\s+){1,}\.|\u2026)"
 
@@ -35,7 +34,7 @@ class PunktLanguageVars:
     def _re_sent_end_chars(self) -> str:
         """
         Returns a regex pattern string for all sentence-ending characters.
-        
+
         Returns:
             str: A pattern matching any sentence ending character
         """
@@ -45,7 +44,7 @@ class PunktLanguageVars:
     def _re_non_word_chars(self) -> str:
         """
         Returns a regex pattern for characters that can never start a word.
-        
+
         Returns:
             str: A pattern matching non-word-starting characters
         """
@@ -57,7 +56,7 @@ class PunktLanguageVars:
     def word_tokenize_pattern(self) -> re.Pattern:
         """
         Returns a compiled regex pattern for tokenizing words.
-        
+
         Returns:
             re.Pattern: The compiled regular expression for word tokenization
         """
@@ -82,10 +81,10 @@ class PunktLanguageVars:
     def word_tokenize(self, text: str) -> list[str]:
         """
         Tokenize text into words using the word_tokenize_pattern.
-        
+
         Args:
             text: The text to tokenize
-            
+
         Returns:
             A list of word tokens
         """
@@ -95,7 +94,7 @@ class PunktLanguageVars:
     def period_context_pattern(self) -> re.Pattern:
         """
         Returns a compiled regex pattern for finding periods in context.
-        
+
         Returns:
             re.Pattern: The compiled regular expression for period contexts
         """
