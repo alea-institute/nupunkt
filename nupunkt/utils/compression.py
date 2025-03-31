@@ -298,7 +298,12 @@ def load_binary_model(file_path: Union[str, Path]) -> Dict[str, Any]:
             offset += key_len
             result["ortho_context"][key] = value
         
-        return result
+        # Return in format compatible with PunktTrainer.from_json
+        return {
+            "parameters": result,
+            "version": "0.2.0",
+            "description": "nupunkt sentence tokenizer model"
+        }
 
 
 def compare_formats(data: Dict[str, Any], output_dir: Union[str, Path] = None) -> Dict[str, Any]:
