@@ -2,7 +2,7 @@ include LICENSE
 include README.md
 include CHANGELOG.md
 include nupunkt/py.typed
-include nupunkt/models/default_model.json.xz
+include nupunkt/models/default_model.bin
 
 recursive-include docs *.md
 recursive-exclude * __pycache__
