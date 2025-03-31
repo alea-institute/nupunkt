@@ -109,4 +109,9 @@ class PunktParameters:
         """
         # The load_compressed_json function will try to detect if it's a binary file
         data = load_compressed_json(file_path)
+        
+        # Handle binary format which is wrapped in a "parameters" key
+        if "parameters" in data:
+            return cls.from_json(data["parameters"])
+        
         return cls.from_json(data)

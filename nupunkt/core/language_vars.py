@@ -7,7 +7,7 @@ extended for different languages.
 """
 
 import re
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 
 class PunktLanguageVars:
@@ -78,7 +78,7 @@ class PunktLanguageVars:
             self._re_word_tokenizer = re.compile(pattern, re.UNICODE | re.VERBOSE)
         return self._re_word_tokenizer
 
-    def word_tokenize(self, text: str) -> list[str]:
+    def word_tokenize(self, text: str) -> List[str]:
         """
         Tokenize text into words using the word_tokenize_pattern.
 

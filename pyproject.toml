@@ -73,23 +73,57 @@ packages = [
 "nupunkt.models" = ["*.json", "*.json.xz", "*.bin"]
 
 [tool.ruff]
-select = ["E", "F", "B", "I"]
 target-version = "py311"
 line-length = 100
+
+# Enable linters in this section
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "B",    # flake8-bugbear
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "PTH",  # use pathlib
+]
+
+ignore = [
+    "E501",  # line too long - already handled by formatter
+    "E741",  # ambiguous variable name 'l'
+    "E402",  # module level import not at top of file - needed for sys.path manipulation
+    "B905",  # zip without explicit strict parameter  
+    "N803",  # argument name should be lowercase
+    "N806",  # variable in function should be lowercase
+    "N815",  # variable in class scope should not be mixedCase
+    "UP006", # use tuple instead of Tuple - maintain compatibility with Python 3.8
+    "UP007", # use X | Y for type annotations - maintain compatibility with Python < 3.10
+    "UP035", # deprecated import
+    "PTH123", # use open() instead of Path.open()
+    "SIM105", # use contextlib.suppress(Exception) instead of try/except pass
+]
+
+# Allow unused variables when underscore-prefixed
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+# Allow autofix for all enabled rules (when `--fix`) is provided
+fixable = ["ALL"]
 
 [tool.black]
 line-length = 100
 target-version = ["py311"]
 
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
+# This is now in mypy.ini, which has more detailed configuration
 
 # Testing config
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "-v"
+
+[dependency-groups]
+dev = [
+    "pytest-benchmark>=5.1.0",
+]

@@ -22,8 +22,11 @@ from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 from nupunkt.trainers.base_trainer import PunktTrainer
 
 
+# Import for type annotations
+from typing import List
+
 # Function for quick and easy sentence tokenization
-def sent_tokenize(text: str) -> list[str]:
+def sent_tokenize(text: str) -> List[str]:
     """
     Tokenize text into sentences using the default pre-trained model.
 

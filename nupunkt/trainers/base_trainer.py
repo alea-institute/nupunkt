@@ -9,7 +9,7 @@ import math
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Any, ClassVar, Dict, Iterator, List, Optional, Set, Tuple, Type, Union
+from typing import Any, ClassVar, Dict, Iterator, List, Optional, Set, Tuple, Type, Union, Counter as CounterType
 
 from nupunkt.core.base import PunktBase
 from nupunkt.core.constants import (
@@ -82,10 +82,10 @@ class PunktTrainer(PunktBase):
             include_common_abbrevs: Whether to include common abbreviations by default
         """
         super().__init__(lang_vars, token_cls)
-        self._type_fdist: Counter[str] = Counter()
+        self._type_fdist: CounterType[str] = Counter()
         self._num_period_toks: int = 0
-        self._collocation_fdist: Counter[Tuple[str, str]] = Counter()
-        self._sent_starter_fdist: Counter[str] = Counter()
+        self._collocation_fdist: CounterType[Tuple[str, str]] = Counter()
+        self._sent_starter_fdist: CounterType[str] = Counter()
         self._sentbreak_count: int = 0
         self._finalized: bool = True
 
@@ -231,7 +231,7 @@ class PunktTrainer(PunktBase):
         # Annotate tokens with sentence breaks
         if verbose:
             print("Annotating tokens...")
-        tokens = list(self._annotate_first_pass(tokens))
+        tokens = list(self._annotate_first_pass(tokens))  # type: ignore  # list will be converted to iterator
 
         # Gather orthographic data
         if verbose:
@@ -245,12 +245,12 @@ class PunktTrainer(PunktBase):
             try:
                 from tqdm import tqdm
 
-                pairs = list(pair_iter(tokens))
+                pairs = list(pair_iter(tokens))  # type: ignore  # list will be converted to iterator
                 pair_iter_with_progress = tqdm(pairs, desc="Analyzing token pairs", unit="pair")
             except ImportError:
-                pair_iter_with_progress = pair_iter(tokens)
+                pair_iter_with_progress = pair_iter(tokens)  # type: ignore  # list will be converted to iterator
         else:
-            pair_iter_with_progress = pair_iter(tokens)
+            pair_iter_with_progress = pair_iter(tokens)  # type: ignore  # list will be converted to iterator
 
         for token1, token2 in pair_iter_with_progress:
             if not token1.period_final or token2 is None:
@@ -701,7 +701,7 @@ class PunktTrainer(PunktBase):
 
         # Load custom common abbreviations if provided
         if cls.CONFIG_COMMON_ABBREVS in data:
-            trainer.COMMON_ABBREVS = data[cls.CONFIG_COMMON_ABBREVS]
+            trainer.COMMON_ABBREVS = data[cls.CONFIG_COMMON_ABBREVS]  # type: ignore  # need to access class var via instance
 
         # Load parameters if available
         if "parameters" in data:

@@ -450,7 +450,7 @@ class PunktSentenceTokenizer(PunktBase):
                 return "Initial with special orthographic heuristic"
         return None
 
-    def _ortho_heuristic(self, token: PunktToken) -> bool | str:
+    def _ortho_heuristic(self, token: PunktToken) -> Union[bool, str]:
         """
         Apply orthographic heuristics to determine if a token starts a sentence.
 
