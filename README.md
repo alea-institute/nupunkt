@@ -122,6 +122,13 @@ for s in sentences:
 
 nupunkt is designed to be both accurate and efficient. It can process large volumes of text quickly, making it suitable for production NLP pipelines.
 
+### Highly Optimized
+
+The tokenizer has been extensively optimized for performance:
+- **Token caching** for common tokens
+- **Fast path processing** for texts without sentence boundaries (up to 1.4B chars/sec)
+- **Pre-computed properties** to avoid repeated calculations
+- **Efficient character processing** and string handling in hot spots
 
 ### Example Legal Domain Benchmark
 ```
@@ -129,10 +136,15 @@ Performance Results:
   Documents processed:      1
   Total characters:         16,567,769
   Total sentences found:    16,095
-  Processing time:          0.48 seconds
-  Processing speed:         34,425,114 characters/second
+  Processing time:          0.49 seconds
+  Processing speed:         33,927,693 characters/second
   Average sentence length:  1029.4 characters
 ```
+
+### Specialized Use Cases
+- Normal text processing: ~31M characters/second
+- Text without sentence boundaries: ~1.4B characters/second 
+- Short text fragments: Extremely fast with early exit paths
 
 ## Contributing
 

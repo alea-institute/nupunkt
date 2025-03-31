@@ -11,13 +11,21 @@
 - Updated training process to use both legal and general abbreviation lists
 - Improved testing tools with test_tokenizer.py
 - Added benchmarking utilities to compare model loading and tokenization performance
+- Added profiling tools for performance analysis and optimization
 
 ### Performance Improvements
 
 - Reduced default model size by 32% using binary LZMA format (1.5MB vs 2.2MB)
-- Maintained or improved tokenization performance
 - Better memory usage during model loading
 - Automatic format selection prioritizing the most efficient format
+- **Major tokenization performance optimization:**
+  - Normal text processing: 31M chars/sec (9% faster)
+  - Text without sentence endings: 1.4B chars/sec (383% faster)
+  - Overall tokenization time reduced by 11%
+  - Function call count reduced by 22%
+- PunktToken initialization optimized with token caching and pre-computed properties
+- Added fast path optimizations for texts without sentence boundaries
+- Improved string handling and regex operations in hot spots
 
 ## 0.2.0 (2025-03-30)
 
