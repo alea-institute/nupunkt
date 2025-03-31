@@ -150,8 +150,8 @@ def main():
     abbreviations = load_abbreviations(abbrev_path)
     
     # Load training data
-    train_text1 = load_jsonl_text(train_path, max_samples=5000)
-    train_text2 = load_jsonl_text(train2_path, max_samples=5000)
+    train_text1 = load_jsonl_text(train_path, max_samples=20000)
+    train_text2 = load_jsonl_text(train2_path, max_samples=20000)
     
     combined_text = train_text1 + "\n\n" + train_text2
     
