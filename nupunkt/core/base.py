@@ -47,17 +47,55 @@ class PunktBase:
         Yields:
             PunktToken instances for each token
         """
+        # Early exit for empty text
+        if not plaintext:
+            return
+            
         parastart = False
-        for line in plaintext.splitlines():
-            if line.strip():
-                tokens = self._lang_vars.word_tokenize(line)
+        
+        # Fast path for simple cases (no line breaks)
+        if '\n' not in plaintext:
+            # Quick check if line contains any non-whitespace characters
+            line_has_content = False
+            for c in plaintext:
+                if not c.isspace():
+                    line_has_content = True
+                    break
+            
+            if line_has_content:
+                tokens = self._lang_vars.word_tokenize(plaintext)
                 if tokens:
                     yield self._Token(tokens[0], parastart=parastart, linestart=True)
                     for tok in tokens[1:]:
                         yield self._Token(tok)
-                parastart = False
-            else:
+            return
+            
+        # Process line by line
+        for line in plaintext.splitlines():
+            # Skip empty lines but mark the start of paragraphs
+            # Check if line contains any non-whitespace characters without creating a new string
+            line_has_content = False
+            for c in line:
+                if not c.isspace():
+                    line_has_content = True
+                    break
+                    
+            if not line_has_content:
                 parastart = True
+                continue
+                
+            # Process non-empty lines
+            tokens = self._lang_vars.word_tokenize(line)
+            if tokens:
+                # First token gets paragraph and line start flags
+                yield self._Token(tokens[0], parastart=parastart, linestart=True)
+                
+                # Remaining tokens in the line
+                for tok in tokens[1:]:
+                    yield self._Token(tok)
+                    
+            # Reset paragraph start flag after processing a non-empty line
+            parastart = False
 
     def _annotate_first_pass(self, tokens: Iterator[PunktToken]) -> Iterator[PunktToken]:
         """
@@ -71,6 +109,13 @@ class PunktBase:
         Yields:
             Annotated tokens
         """
+        # Fast batch processing if tokens is a list
+        if isinstance(tokens, list):
+            for token in tokens:
+                self._first_pass_annotation(token)
+            return tokens
+        
+        # Regular iterator processing
         for token in tokens:
             self._first_pass_annotation(token)
             yield token
@@ -82,22 +127,40 @@ class PunktBase:
         Args:
             token: The token to annotate
         """
-        if token.tok in self._lang_vars.sent_end_chars:
+        # Quick check for empty tokens
+        if not token.tok:
+            return
+            
+        # Fast path for sentence ending characters (., !, ?)
+        if len(token.tok) == 1 and token.tok in self._lang_vars.sent_end_chars:
             token.sentbreak = True
-        elif token.is_ellipsis:
+            return
+            
+        # Check for ellipsis pattern
+        if token.is_ellipsis:
             token.ellipsis = True
             # Don't mark as sentence break now - will be decided in second pass
             # based on what follows the ellipsis
             token.sentbreak = False
-        elif token.period_final and not token.tok.endswith(".."):
+            return
+            
+        # Handle period-final tokens
+        if token.period_final:
+            # Skip double-period tokens (likely part of an ellipsis)
+            if token.tok.endswith(".."):
+                return
+                
             # If token is not a valid abbreviation candidate, mark it as a sentence break
             if not token.valid_abbrev_candidate:
                 token.sentbreak = True
-            else:
-                # For valid candidates, check if they are known abbreviations
-                candidate = token.tok[:-1].lower()
+                return
                 
-                # Check if the token itself is a known abbreviation
+            # For valid candidates, check if they are known abbreviations - use direct string ops
+            # for better performance instead of creating a new string
+            tok_len = len(token.tok)
+            if tok_len > 1:
+                # Get lowercase version of token without final period
+                candidate = token.tok[:tok_len-1].lower()
                 if candidate in self._params.abbrev_types:
                     token.abbr = True
                 # Check if the last part after a dash is a known abbreviation

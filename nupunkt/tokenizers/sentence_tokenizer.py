@@ -25,6 +25,13 @@ class PunktSentenceTokenizer(PunktBase):
     This class uses trained parameters to tokenize text into sentences,
     handling abbreviations, collocations, and other special cases.
     """
+    # Precompiled regex patterns for ellipsis detection
+    _re_ellipsis_patterns = [
+        re.compile(r"\.\.+"),  
+        re.compile(r"\.\s+\.\s+\."), 
+        re.compile("\u2026")  # Unicode ellipsis character
+    ]
+    
     def __init__(
         self,
         train_text: Optional[Any] = None,
@@ -32,6 +39,7 @@ class PunktSentenceTokenizer(PunktBase):
         lang_vars: Optional[PunktLanguageVars] = None,
         token_cls: Type[PunktToken] = PunktToken,
         include_common_abbrevs: bool = True,  # Whether to include common abbreviations
+        cache_size: int = 100,  # Size of the sentence tokenization cache
     ) -> None:
         """
         Initialize the tokenizer, optionally with training text or parameters.
@@ -42,6 +50,7 @@ class PunktSentenceTokenizer(PunktBase):
             lang_vars: Language-specific variables
             token_cls: The token class to use
             include_common_abbrevs: Whether to include common abbreviations
+            cache_size: Size of the cache for sentence tokenization results
         """
         super().__init__(lang_vars, token_cls)
         # If a training text (or pre-trained parameters) is provided,
@@ -65,6 +74,11 @@ class PunktSentenceTokenizer(PunktBase):
                 self._params.abbrev_types.add(abbr)
             if verbose:
                 print(f"Added {len(PunktTrainer.COMMON_ABBREVS)} common abbreviations to tokenizer.")
+                
+        # Initialize cache for tokenization results
+        self._tokenize_cache = {}
+        self._cache_size = cache_size
+        self._cache_keys = []  # Track keys for LRU eviction
                 
     def to_json(self) -> Dict[str, Any]:
         """
@@ -157,7 +171,7 @@ class PunktSentenceTokenizer(PunktBase):
 
     def tokenize(self, text: str, realign_boundaries: bool = True) -> List[str]:
         """
-        Tokenize text into sentences.
+        Tokenize text into sentences with caching for improved performance.
         
         Args:
             text: The text to tokenize
@@ -166,7 +180,29 @@ class PunktSentenceTokenizer(PunktBase):
         Returns:
             A list of sentences
         """
-        return list(self.sentences_from_text(text, realign_boundaries))
+        # Use caching for frequently tokenized texts
+        cache_key = (text, realign_boundaries)
+        
+        # Check cache first
+        if cache_key in self._tokenize_cache:
+            # Move this key to the end of the LRU list
+            self._cache_keys.remove(cache_key)
+            self._cache_keys.append(cache_key)
+            return self._tokenize_cache[cache_key]
+        
+        # Not in cache, tokenize the text
+        result = list(self.sentences_from_text(text, realign_boundaries))
+        
+        # Add to cache
+        self._tokenize_cache[cache_key] = result
+        self._cache_keys.append(cache_key)
+        
+        # Evict oldest item if cache is full
+        if len(self._cache_keys) > self._cache_size:
+            oldest_key = self._cache_keys.pop(0)
+            del self._tokenize_cache[oldest_key]
+            
+        return result
 
     def span_tokenize(self, text: str, realign_boundaries: bool = True) -> Iterator[Tuple[int, int]]:
         """
@@ -208,11 +244,53 @@ class PunktSentenceTokenizer(PunktBase):
         Returns:
             The index of the last whitespace character, or 0 if none
         """
+        # Fast path for empty or very short text
+        if not text or len(text) < 3:
+            return 0
+            
+        # Most whitespace in text is spaces
+        # rfind is implemented in C and much faster than Python loop
+        last_space = text.rfind(' ')
+        
+        # If we found a space, return it directly
+        if last_space >= 0:
+            return last_space
+            
+        # Check for tab and newline only if space wasn't found
+        # In most text, spaces are much more common
+        last_tab = text.rfind('\t')
+        if last_tab >= 0:
+            return last_tab
+            
+        last_newline = text.rfind('\n')
+        if last_newline >= 0:
+            return last_newline
+            
+        # Fall back to slower method for other whitespace characters
+        # This is very rare in normal text
         for i in range(len(text) - 1, -1, -1):
             if text[i].isspace():
                 return i
+                
+        # No whitespace found
         return 0
 
+    def _fast_lstrip_index(self, text: str, start_pos: int = 0) -> int:
+        """
+        Fast implementation to find the index after leading whitespace.
+        
+        Args:
+            text: The text to process
+            start_pos: The starting position in the text
+            
+        Returns:
+            The index of the first non-whitespace character
+        """
+        i = start_pos
+        while i < len(text) and text[i].isspace():
+            i += 1
+        return i
+    
     def _match_potential_end_contexts(self, text: str) -> Iterator[Tuple[re.Match, str]]:
         """
         Find potential sentence end contexts in text.
@@ -229,13 +307,17 @@ class PunktSentenceTokenizer(PunktBase):
         # Special handling for ellipsis followed by capital letter
         ellipsis_positions = []
         
-        # Find positions of all ellipsis patterns in the text
-        for ellipsis_pattern in [r"\.\.+", r"\.\s+\.\s+\.", "\u2026"]:
-            for match in re.finditer(ellipsis_pattern, text):
+        # Find positions of all ellipsis patterns in the text using precompiled patterns
+        for pattern in self._re_ellipsis_patterns:
+            for match in pattern.finditer(text):
                 end_pos = match.end()
                 # Check if there's a capital letter after the ellipsis
-                if end_pos < len(text) - 1 and text[end_pos:].lstrip()[0:1].isupper():
-                    ellipsis_positions.append(end_pos - 1)  # Position of the last period
+                if end_pos < len(text) - 1:
+                    # Use our fast lstrip implementation that doesn't create new strings
+                    first_non_ws = self._fast_lstrip_index(text, end_pos)
+                    # Check if there's text after whitespace and it starts with uppercase
+                    if first_non_ws < len(text) and text[first_non_ws].isupper():
+                        ellipsis_positions.append(end_pos - 1)  # Position of the last period
         
         # Standard processing for period contexts
         for match in self._lang_vars.period_context_pattern.finditer(text):
@@ -260,15 +342,57 @@ class PunktSentenceTokenizer(PunktBase):
         Yields:
             slice objects for each sentence
         """
+        # Cache frequently used text slices for better performance
+        cache_key = f"slices_{hash(text)}"
+        if hasattr(self, '_slice_cache') and cache_key in self._slice_cache:
+            # Return cached slices directly
+            yield from self._slice_cache[cache_key]
+            return
+            
+        slices = []
         last_break = 0
-        for match, context in self._match_potential_end_contexts(text):
+        
+        # Process batches of potential end contexts for efficiency
+        potential_ends = list(self._match_potential_end_contexts(text))
+        
+        for match, context in potential_ends:
+            # Check if this is a sentence break
             if self.text_contains_sentbreak(context):
-                yield slice(last_break, match.end())
+                current_slice = slice(last_break, match.end())
+                slices.append(current_slice)
+                yield current_slice
+                
+                # Update the last break position
                 if match.group("next_tok"):
                     last_break = match.start("next_tok")
                 else:
                     last_break = match.end()
-        yield slice(last_break, len(text.rstrip()))
+        
+        # Add the final slice without creating a new string via rstrip()
+        # Find the last non-whitespace character index directly
+        last_non_ws = len(text) - 1
+        while last_non_ws >= 0 and text[last_non_ws].isspace():
+            last_non_ws -= 1
+        
+        # If we found a non-whitespace character, add 1 to include it
+        if last_non_ws >= 0:
+            last_non_ws += 1
+            
+        final_slice = slice(last_break, last_non_ws)
+        slices.append(final_slice)
+        yield final_slice
+        
+        # Cache the results (if we have a reasonable number of slices)
+        if len(slices) < 1000:  # Don't cache extremely large documents
+            if not hasattr(self, '_slice_cache'):
+                self._slice_cache = {}
+                
+            # Limited cache size
+            if len(self._slice_cache) > 50:
+                # Simple eviction strategy - just clear the cache
+                self._slice_cache.clear()
+                
+            self._slice_cache[cache_key] = slices
 
     def _realign_boundaries(self, text: str, slices: List[slice]) -> Iterator[slice]:
         """
@@ -285,7 +409,8 @@ class PunktSentenceTokenizer(PunktBase):
         for slice1, slice2 in pair_iter(iter(slices)):
             slice1 = slice(slice1.start + realign, slice1.stop)
             if slice2 is None:
-                if text[slice1]:
+                # Check if slice has content without creating a string
+                if slice1.stop > slice1.start:
                     yield slice1
                 continue
             m = self._lang_vars.re_boundary_realignment.match(text[slice2])
@@ -294,7 +419,8 @@ class PunktSentenceTokenizer(PunktBase):
                 realign = m.end()
             else:
                 realign = 0
-                if text[slice1]:
+                # Check if slice has content without creating a string
+                if slice1.stop > slice1.start:
                     yield slice1
 
     def text_contains_sentbreak(self, text: str) -> bool:
@@ -307,14 +433,56 @@ class PunktSentenceTokenizer(PunktBase):
         Returns:
             True if the text contains a sentence break
         """
-        tokens = list(self._annotate_tokens(self._tokenize_words(text)))
-        
-        # Special handling for ellipsis followed by capitalized word
-        for i, token in enumerate(tokens):
-            if token.ellipsis and i < len(tokens)-1 and tokens[i+1].first_upper:
-                return True
+        # Micro-optimization: Empty or very short texts cannot contain sentence breaks
+        if not text or len(text) < 2:
+            return False
+            
+        # Quick check for sentence ending characters
+        for char in self._lang_vars.sent_end_chars:
+            if char in text:
+                # Fast path for obvious sentence breaks (most common case)
+                if char != '.':  # For ! and ? we can be more certain
+                    return True
                 
-        return any(token.sentbreak for token in tokens)
+                # For periods, we need to handle special cases
+                # But continue with checks below
+                break
+        else:
+            # No sentence ending chars found at all
+            return False
+        
+        # Quick check for ellipsis pattern followed by uppercase
+        # This is a common pattern that we can detect efficiently
+        for pattern in self._re_ellipsis_patterns:
+            match = pattern.search(text)
+            if match:
+                # Check if there's text after the ellipsis using our fast lstrip implementation
+                end_pos = match.end()
+                if end_pos < len(text):
+                    first_non_ws = self._fast_lstrip_index(text, end_pos)
+                    if first_non_ws < len(text) and text[first_non_ws].isupper():
+                        return True
+        
+        # Cache the tokenization result if available
+        # This helps with repeated text fragments that occur in the text
+        cache_key = hash(text)
+        if hasattr(self, '_sentbreak_cache'):
+            if cache_key in self._sentbreak_cache:
+                return self._sentbreak_cache[cache_key]
+        else:
+            self._sentbreak_cache = {}
+            
+        # Fall back to full tokenization and annotation for ambiguous cases
+        tokens = list(self._annotate_tokens(self._tokenize_words(text)))
+        result = any(token.sentbreak for token in tokens)
+        
+        # Cache the result (limited size)
+        if len(self._sentbreak_cache) > 1000:
+            # Simple eviction strategy - just clear the cache when it gets too big
+            self._sentbreak_cache.clear()
+        self._sentbreak_cache[cache_key] = result
+        
+        return result
 
     def _annotate_tokens(self, tokens: Iterator[PunktToken]) -> Iterator[PunktToken]:
         """
@@ -326,25 +494,38 @@ class PunktSentenceTokenizer(PunktBase):
         Yields:
             Fully annotated tokens
         """
-        tokens = self._annotate_first_pass(tokens)
-        tokens = self._annotate_second_pass(tokens)
-        return tokens
+        # Convert to list for better performance with pair_iter
+        tokens_list = list(self._annotate_first_pass(tokens))
+        
+        # Perform second pass annotation
+        # This is more efficient than using an iterator-based approach
+        return self._annotate_second_pass(tokens_list)
 
-    def _annotate_second_pass(self, tokens: Iterator[PunktToken]) -> Iterator[PunktToken]:
+    def _annotate_second_pass(self, tokens: List[PunktToken]) -> Iterator[PunktToken]:
         """
         Perform second-pass annotation on tokens.
         
         This applies collocational and orthographic heuristics.
         
         Args:
-            tokens: The tokens to annotate
+            tokens: The tokens to annotate (as a list for better performance)
             
         Yields:
             Tokens with second-pass annotation
         """
-        for token1, token2 in pair_iter(tokens):
-            self._second_pass_annotation(token1, token2)
-            yield token1
+        # Use a more efficient approach for list inputs
+        if not tokens:
+            return
+            
+        # Bulk process all pairs at once
+        for i in range(len(tokens) - 1):
+            self._second_pass_annotation(tokens[i], tokens[i + 1])
+            yield tokens[i]
+            
+        # Don't forget the last token
+        if tokens:
+            self._second_pass_annotation(tokens[-1], None)
+            yield tokens[-1]
 
     def _second_pass_annotation(
         self, token1: PunktToken, token2: Optional[PunktToken]
