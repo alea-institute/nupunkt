@@ -9,7 +9,7 @@ from functools import lru_cache
 
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.parameters import PunktParameters
-from nupunkt.core.tokens import PunktToken
+from nupunkt.core.tokens import PunktToken, create_punkt_token
 
 
 class PunktBase:
@@ -60,11 +60,21 @@ class PunktBase:
                 tokens = self._lang_vars.word_tokenize(line)
                 if tokens:
                     # First token gets parastart and linestart flags
-                    yield self._Token(tokens[0], parastart=parastart, linestart=True)
-                    
-                    # Process remaining tokens in a batch when possible
-                    for tok in tokens[1:]:
-                        yield self._Token(tok)
+                    # Use the factory function to benefit from caching
+                    if issubclass(self._Token, PunktToken):
+                        # Use our optimized factory function if the token class is PunktToken
+                        yield create_punkt_token(tokens[0], parastart=parastart, linestart=True)
+                        
+                        # Process remaining tokens in a batch when possible
+                        for tok in tokens[1:]:
+                            yield create_punkt_token(tok)
+                    else:
+                        # Fallback for custom token classes
+                        yield self._Token(tokens[0], parastart=parastart, linestart=True)
+                        
+                        # Process remaining tokens in a batch when possible
+                        for tok in tokens[1:]:
+                            yield self._Token(tok)
                 parastart = False
             else:
                 parastart = True
