@@ -7,7 +7,7 @@ extended for different languages.
 """
 
 import re
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 
 class PunktLanguageVars:
@@ -19,7 +19,8 @@ class PunktLanguageVars:
     used for various pattern matching tasks in the tokenization process.
     """
 
-    sent_end_chars: Tuple[str, ...] = (".", "?", "!")
+    # Use frozenset for O(1) membership testing instead of tuple
+    sent_end_chars: frozenset = frozenset((".", "?", "!"))
     internal_punctuation: str = ",:;"
     re_boundary_realignment: re.Pattern = re.compile(r'[\'"\)\]}]+?(?:\s+|(?=--)|$)', re.MULTILINE)
     _re_word_start: str = r"[^\(\"\`{\[:;&\#\*@\)}\]\-,]"

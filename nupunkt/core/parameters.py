@@ -31,21 +31,25 @@ class PunktParameters:
     collocations: Set[Tuple[str, str]] = field(default_factory=set)
     sent_starters: Set[str] = field(default_factory=set)
     ortho_context: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
-    
+
     # Cached regex patterns for efficient lookups
     _abbrev_pattern: Optional[Pattern] = field(default=None, repr=False)
     _sent_starter_pattern: Optional[Pattern] = field(default=None, repr=False)
-    
+
     def __post_init__(self) -> None:
         """Initialize any derived attributes after instance creation."""
         # Patterns will be compiled on first use
-        
+        # Initialize frozen sets to empty frozensets
+        self._frozen_abbrev_types = frozenset()
+        self._frozen_collocations = frozenset()
+        self._frozen_sent_starters = frozenset()
+
     def get_abbrev_pattern(self) -> Pattern:
         """
         Get a compiled regex pattern for matching abbreviations.
-        
+
         The pattern is compiled on first use and cached for subsequent calls.
-        
+
         Returns:
             A compiled regex pattern that matches any abbreviation in abbrev_types
         """
@@ -60,13 +64,13 @@ class PunktParameters:
                 pattern = r"^(?:" + "|".join(sorted_abbrevs) + r")$"
                 self._abbrev_pattern = re.compile(pattern, re.IGNORECASE)
         return self._abbrev_pattern
-    
+
     def get_sent_starter_pattern(self) -> Pattern:
         """
         Get a compiled regex pattern for matching sentence starters.
-        
+
         The pattern is compiled on first use and cached for subsequent calls.
-        
+
         Returns:
             A compiled regex pattern that matches any sentence starter
         """
@@ -91,21 +95,21 @@ class PunktParameters:
             flag: The orthographic context flag
         """
         self.ortho_context[typ] |= flag
-    
+
     def add_abbreviation(self, abbrev: str) -> None:
         """
         Add a single abbreviation and invalidate the cached pattern.
-        
+
         Args:
             abbrev: The abbreviation to add
         """
         self.abbrev_types.add(abbrev)
         self._abbrev_pattern = None
-        
+
     def add_sent_starter(self, starter: str) -> None:
         """
         Add a single sentence starter and invalidate the cached pattern.
-        
+
         Args:
             starter: The sentence starter to add
         """
@@ -116,27 +120,37 @@ class PunktParameters:
         """Invalidate cached regex patterns when sets are modified."""
         self._abbrev_pattern = None
         self._sent_starter_pattern = None
-    
+
+    def freeze_sets(self) -> None:
+        """
+        Freeze the mutable sets to create immutable frozensets for faster lookups.
+
+        Call this method after training is complete to optimize for inference speed.
+        """
+        self._frozen_abbrev_types = frozenset(self.abbrev_types)
+        self._frozen_collocations = frozenset(self.collocations)
+        self._frozen_sent_starters = frozenset(self.sent_starters)
+
     def update_abbrev_types(self, abbrevs: Set[str]) -> None:
         """
         Update abbreviation types and invalidate the cached pattern.
-        
+
         Args:
             abbrevs: Set of abbreviations to add
         """
         self.abbrev_types.update(abbrevs)
         self._abbrev_pattern = None
-        
+
     def update_sent_starters(self, starters: Set[str]) -> None:
         """
         Update sentence starters and invalidate the cached pattern.
-        
+
         Args:
             starters: Set of sentence starters to add
         """
         self.sent_starters.update(starters)
         self._sent_starter_pattern = None
-    
+
     def to_json(self) -> Dict[str, Any]:
         """Convert parameters to a JSON-serializable dictionary."""
         return {
@@ -156,10 +170,13 @@ class PunktParameters:
         params.ortho_context = defaultdict(int)
         for k, v in data.get("ortho_context", {}).items():
             params.ortho_context[k] = int(v)  # Ensure value is int
-        
+
         # Don't pre-compile patterns by default
         # Direct set lookup is faster based on benchmarks
-            
+
+        # Create frozen sets for faster lookups during inference
+        params.freeze_sets()
+
         return params
 
     def save(
@@ -209,9 +226,9 @@ class PunktParameters:
         """
         # The load_compressed_json function will try to detect if it's a binary file
         data = load_compressed_json(file_path)
-        
+
         # Handle binary format which is wrapped in a "parameters" key
         if "parameters" in data:
             return cls.from_json(data["parameters"])
-        
+
         return cls.from_json(data)

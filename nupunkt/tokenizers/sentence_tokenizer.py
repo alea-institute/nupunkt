@@ -5,9 +5,9 @@ This module provides the main tokenizer class for sentence boundary detection.
 """
 
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union
-from functools import lru_cache
 
 from nupunkt.core.base import PunktBase
 from nupunkt.core.constants import ORTHO_BEG_LC, ORTHO_LC, ORTHO_MID_UC, ORTHO_UC
@@ -15,7 +15,7 @@ from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
 from nupunkt.trainers.base_trainer import PunktTrainer
-from nupunkt.utils.iteration import pair_iter, pair_iter_fast
+from nupunkt.utils.iteration import pair_iter
 
 
 class PunktSentenceTokenizer(PunktBase):
@@ -25,25 +25,28 @@ class PunktSentenceTokenizer(PunktBase):
     This class uses trained parameters to tokenize text into sentences,
     handling abbreviations, collocations, and other special cases.
     """
-    
+
     # Pre-compiled regex patterns
     _RE_ELLIPSIS_MULTI = re.compile(r"\.\.+")
     _RE_ELLIPSIS_SPACED = re.compile(r"\.\s+\.\s+\.")
     _RE_UNICODE_ELLIPSIS = re.compile("\u2026")
-    
+
     # Set of common punctuation marks for fast lookup
     _PUNCT_CHARS = frozenset([";", ":", ",", ".", "!", "?"])
-    
+
+    # Common sentence-ending punctuation as a frozenset for O(1) lookups
+    _SENT_END_CHARS = frozenset([".", "!", "?"])
+
     @staticmethod
     def _is_next_char_uppercase(text: str, pos: int, text_len: int) -> bool:
         """
         Check if the next non-whitespace character after a position is uppercase.
-        
+
         Args:
             text: The text to check
             pos: The position to start checking from
             text_len: The length of the text
-            
+
         Returns:
             True if the next non-whitespace character is uppercase
         """
@@ -51,7 +54,7 @@ class PunktSentenceTokenizer(PunktBase):
         while i < text_len and text[i].isspace():
             i += 1
         return i < text_len and text[i].isupper()
-    
+
     def __init__(
         self,
         train_text: Optional[Any] = None,
@@ -247,10 +250,10 @@ class PunktSentenceTokenizer(PunktBase):
     def _cached_whitespace_index(text: str) -> int:
         """
         Cached implementation of finding the last whitespace index.
-        
+
         Args:
             text: The text to search
-            
+
         Returns:
             The index of the last whitespace character, or 0 if none
         """
@@ -258,7 +261,7 @@ class PunktSentenceTokenizer(PunktBase):
             if text[i].isspace():
                 return i
         return 0
-        
+
     def _get_last_whitespace_index(self, text: str) -> int:
         """
         Find the index of the last whitespace character in a string.
@@ -283,39 +286,39 @@ class PunktSentenceTokenizer(PunktBase):
         """
         # Pre-compute text length once
         text_len = len(text)
-        
+
         # Skip processing if text is too short
         if text_len < 2:
             return
-            
-        # Quick check for any sentence-ending characters
-        if not any(end_char in text for end_char in self._lang_vars.sent_end_chars):
+
+        # Quick check for any sentence-ending characters using frozenset for O(1) lookups
+        if not any(end_char in text for end_char in self._SENT_END_CHARS):
             return
-        
+
         # Collect all matches to avoid generator overhead
         matches: List[Tuple[re.Match, str]] = []
-            
+
         previous_slice = slice(0, 0)
         previous_match: Optional[re.Match] = None
 
         # Special handling for ellipsis followed by capital letter - only check if text contains '..'
         ellipsis_positions = []
-        
+
         # Fast path: only process ellipsis if the text contains consecutive periods
-        if '..' in text or '\u2026' in text or '. . ' in text:
+        if ".." in text or "\u2026" in text or ". . " in text:
             # Multiple periods ellipsis
             for match in self._RE_ELLIPSIS_MULTI.finditer(text):
                 end_pos = match.end()
                 # Check if there's a capital letter after the ellipsis
                 if end_pos < text_len and self._is_next_char_uppercase(text, end_pos, text_len):
                     ellipsis_positions.append(end_pos - 1)  # Position of the last period
-            
+
             # Spaced ellipsis
             for match in self._RE_ELLIPSIS_SPACED.finditer(text):
                 end_pos = match.end()
                 if end_pos < text_len and self._is_next_char_uppercase(text, end_pos, text_len):
                     ellipsis_positions.append(end_pos - 1)
-                    
+
             # Unicode ellipsis
             for match in self._RE_UNICODE_ELLIPSIS.finditer(text):
                 end_pos = match.end()
@@ -330,24 +333,28 @@ class PunktSentenceTokenizer(PunktBase):
             prev_word_slice = slice(index_after_last_space, match.start())
             if previous_match and previous_slice.stop <= prev_word_slice.start:
                 # Use string joining for efficient concatenation
-                context = "".join([
-                    text[previous_slice.start:previous_slice.stop],
-                    previous_match.group(),
-                    previous_match.group("after_tok")
-                ])
+                context = "".join(
+                    [
+                        text[previous_slice.start : previous_slice.stop],
+                        previous_match.group(),
+                        previous_match.group("after_tok"),
+                    ]
+                )
                 matches.append((previous_match, context))
             previous_match = match
             previous_slice = prev_word_slice
-            
+
         if previous_match:
             # Use string joining for efficient concatenation
-            context = "".join([
-                text[previous_slice.start:previous_slice.stop],
-                previous_match.group(),
-                previous_match.group("after_tok")
-            ])
+            context = "".join(
+                [
+                    text[previous_slice.start : previous_slice.stop],
+                    previous_match.group(),
+                    previous_match.group("after_tok"),
+                ]
+            )
             matches.append((previous_match, context))
-            
+
         # Yield all matches at once
         yield from matches
 
@@ -361,9 +368,16 @@ class PunktSentenceTokenizer(PunktBase):
         Yields:
             slice objects for each sentence
         """
-        # Pre-calculate the end position once to avoid repeated calls to rstrip
-        text_end = len(text.rstrip())
-        
+        # Find the last non-whitespace character index directly without creating a copy
+        text_end = len(text) - 1
+        while text_end >= 0 and text[text_end].isspace():
+            text_end -= 1
+        # Add 1 to include the non-whitespace character itself
+        if text_end >= 0:
+            text_end += 1
+        else:
+            text_end = 0
+
         last_break = 0
         # Get all potential sentence breaks in one go
         for match, context in self._match_potential_end_contexts(text):
@@ -373,7 +387,7 @@ class PunktSentenceTokenizer(PunktBase):
                     last_break = match.start("next_tok")
                 else:
                     last_break = match.end()
-        
+
         # Final slice
         if last_break < text_end:
             yield slice(last_break, text_end)
@@ -419,18 +433,33 @@ class PunktSentenceTokenizer(PunktBase):
         # Quick check for empty text
         if not text:
             return False
-            
-        # Quick check for extremely short text without periods
-        if len(text) < 5 and '.' not in text and '!' not in text and '?' not in text:
+
+        # Quick check for extremely short text without sentence-ending punctuation
+        if len(text) < 5 and not any(end_char in text for end_char in self._SENT_END_CHARS):
             return False
-        
+
+        # Quick check for definite sentence breaks (! or ?)
+        # These are almost always sentence breaks and don't need full analysis
+        # Use frozenset for faster lookups with the in operator
+        excl_quest_marks = frozenset(["!", "?"])
+        if "!" in text or "?" in text:
+            # Further optimization: if followed by space + uppercase
+            for i, char in enumerate(text[:-2]):
+                if (
+                    char in excl_quest_marks
+                    and i < len(text) - 2
+                    and text[i + 1].isspace()
+                    and text[i + 2].isupper()
+                ):
+                    return True
+
         # Tokenize and annotate in one pass
         tokens = list(self._annotate_tokens(self._tokenize_words(text)))
-        
+
         # No tokens means no sentence break
         if not tokens:
             return False
-            
+
         # Fast check for sentbreak before looping
         if any(token.sentbreak for token in tokens):
             return True
@@ -438,7 +467,7 @@ class PunktSentenceTokenizer(PunktBase):
         # Fast check for ellipsis - if no ellipsis is present, skip the loop
         if all(not token.ellipsis for token in tokens):
             return False
-            
+
         # Special handling for ellipsis followed by capitalized word
         # Only run this if we have at least two tokens
         if len(tokens) > 1:
@@ -575,26 +604,24 @@ class PunktSentenceTokenizer(PunktBase):
         # Simple case for punctuation tokens - use set lookup instead of tuple comparison
         if token.tok in self._PUNCT_CHARS:
             return False
-            
+
         # Use cached implementation for everything else
         return self._cached_ortho_heuristic(
-            token.type_no_sentperiod, 
-            token.first_upper, 
-            token.first_lower
+            token.type_no_sentperiod, token.first_upper, token.first_lower
         )
-    
+
     @lru_cache(maxsize=500)
     def _cached_ortho_heuristic(
         self, type_no_sentperiod: str, first_upper: bool, first_lower: bool
     ) -> Union[bool, str]:
         """
         Cached implementation of orthographic heuristics.
-        
+
         Args:
             type_no_sentperiod: The token type without sentence-final period
             first_upper: Whether the first character is uppercase
             first_lower: Whether the first character is lowercase
-            
+
         Returns:
             True if the token starts a sentence, False if not, "unknown" if uncertain
         """
@@ -604,15 +631,15 @@ class PunktSentenceTokenizer(PunktBase):
         if first_lower and ((ortho & ORTHO_UC) or not (ortho & ORTHO_BEG_LC)):
             return False
         return "unknown"
-        
+
     @lru_cache(maxsize=500)
     def _is_sent_starter(self, token_type: str) -> bool:
         """
         Check if a token type is a known sentence starter, using cached lookups.
-        
+
         Args:
             token_type: The token type to check
-            
+
         Returns:
             True if the token type is a known sentence starter, False otherwise
         """
