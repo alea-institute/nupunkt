@@ -7,7 +7,7 @@ in the Punkt algorithm and calculates various derived properties.
 
 import re
 from functools import lru_cache
-from typing import Dict, Tuple, Optional, Any
+from typing import Dict, Tuple
 
 # Compiled regex patterns for better performance
 _RE_NON_WORD_DOT = re.compile(r"[^\w.]")
@@ -25,10 +25,10 @@ _RE_NON_PUNCT = re.compile(r"[^\W\d]")
 def _check_is_ellipsis(tok: str) -> bool:
     """
     Cached function to check if a token represents an ellipsis.
-    
+
     Args:
         tok: The token to check
-        
+
     Returns:
         True if the token is an ellipsis, False otherwise
     """
@@ -41,20 +41,17 @@ def _check_is_ellipsis(tok: str) -> bool:
         return True
 
     # Check for spaced ellipsis (. . ., . .  ., etc.)
-    if _RE_SPACED_ELLIPSIS.search(tok):
-        return True
-
-    return False
+    return bool(_RE_SPACED_ELLIPSIS.search(tok))
 
 
 @lru_cache(maxsize=500)
 def _check_is_initial(tok: str) -> bool:
     """
     Cached function to check if a token is an initial.
-    
+
     Args:
         tok: The token to check
-        
+
     Returns:
         True if the token is an initial, False otherwise
     """
@@ -65,10 +62,10 @@ def _check_is_initial(tok: str) -> bool:
 def _check_is_alpha(tok: str) -> bool:
     """
     Cached function to check if a token is alphabetic.
-    
+
     Args:
         tok: The token to check
-        
+
     Returns:
         True if the token is alphabetic, False otherwise
     """
@@ -79,10 +76,10 @@ def _check_is_alpha(tok: str) -> bool:
 def _check_is_non_punct(typ: str) -> bool:
     """
     Cached function to check if a token type contains non-punctuation.
-    
+
     Args:
         typ: The token type to check
-        
+
     Returns:
         True if the token type contains non-punctuation, False otherwise
     """
@@ -113,19 +110,19 @@ def _get_type_no_period(type_str: str) -> str:
 
 
 # Module-level cache for PunktToken instances
-_token_instance_cache: Dict[Tuple[str, bool, bool], 'PunktToken'] = {}
+_token_instance_cache: Dict[Tuple[str, bool, bool], "PunktToken"] = {}
 _TOKEN_CACHE_SIZE = 2000  # Increased from original 1000
 
 
-def create_punkt_token(tok: str, parastart: bool = False, linestart: bool = False) -> 'PunktToken':
+def create_punkt_token(tok: str, parastart: bool = False, linestart: bool = False) -> "PunktToken":
     """
     Factory function to create PunktToken instances with caching.
-    
+
     Args:
         tok: Token text
         parastart: Whether the token starts a paragraph
         linestart: Whether the token starts a line
-        
+
     Returns:
         A new or cached PunktToken instance
     """
@@ -135,14 +132,14 @@ def create_punkt_token(tok: str, parastart: bool = False, linestart: bool = Fals
         token = _token_instance_cache.get(cache_key)
         if token is not None:
             return token
-            
+
         token = PunktToken(tok, parastart, linestart)
-        
+
         # Add to cache if not full
         if len(_token_instance_cache) < _TOKEN_CACHE_SIZE:
             _token_instance_cache[cache_key] = token
         return token
-    
+
     # For longer tokens, just create a new instance
     return PunktToken(tok, parastart, linestart)
 
@@ -153,25 +150,39 @@ class PunktToken:
 
     This class contains the token string and various properties and flags that
     indicate its role in sentence boundary detection.
-    
+
     Uses __slots__ for memory efficiency, especially for large documents
     where millions of token instances are created.
     """
-    
+
     __slots__ = (
-        'tok', 'parastart', 'linestart', 'sentbreak', 'abbr', 'ellipsis',
-        'period_final', 'type', 'valid_abbrev_candidate',
-        '_first_upper', '_first_lower', '_type_no_period', '_type_no_sentperiod',
-        '_is_ellipsis', '_is_number', '_is_initial', '_is_alpha', '_is_non_punct'
+        "tok",
+        "parastart",
+        "linestart",
+        "sentbreak",
+        "abbr",
+        "ellipsis",
+        "period_final",
+        "type",
+        "valid_abbrev_candidate",
+        "_first_upper",
+        "_first_lower",
+        "_type_no_period",
+        "_type_no_sentperiod",
+        "_is_ellipsis",
+        "_is_number",
+        "_is_initial",
+        "_is_alpha",
+        "_is_non_punct",
     )
-    
+
     # Define allowed characters for fast punctuation check (alphanumeric + period)
     _ALLOWED_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.")
 
     def __init__(self, tok: str, parastart: bool = False, linestart: bool = False) -> None:
         """
         Initialize a new PunktToken instance.
-        
+
         Args:
             tok: The token string
             parastart: Whether this token starts a paragraph
@@ -184,16 +195,16 @@ class PunktToken:
         self.sentbreak = False
         self.abbr = False
         self.ellipsis = False
-        
+
         # Initialize computed attributes
         self.period_final = tok.endswith(".")
         self.type = _get_token_type(tok)
-        
+
         # Pre-compute frequently accessed properties
         tok_len = len(tok)
         self._first_upper = tok_len > 0 and tok[0].isupper()
         self._first_lower = tok_len > 0 and tok[0].islower()
-        
+
         # Initialize lazily computed properties (will be set on first access)
         self._type_no_period = None
         self._type_no_sentperiod = None
@@ -202,34 +213,32 @@ class PunktToken:
         self._is_initial = None
         self._is_alpha = None
         self._is_non_punct = None
-        
+
         # Fast check for invalid characters (non-alphanumeric and non-period)
         has_invalid_char = False
         for c in tok:
             if c not in self._ALLOWED_CHARS:
                 has_invalid_char = True
                 break
-        
+
         if self.period_final and not has_invalid_char:
             # For tokens with internal periods (like U.S.C), get non-period chars
             # Use more efficient counting method
             alpha_count = 0
             digit_count = 0
             for c in tok:
-                if c != '.':
+                if c != ".":
                     if c.isalpha():
                         alpha_count += 1
                     elif c.isdigit():
                         digit_count += 1
-            
+
             self.valid_abbrev_candidate = (
-                not (self.type == "##number##")
-                and alpha_count >= digit_count
-                and alpha_count > 0
+                self.type != "##number##" and alpha_count >= digit_count and alpha_count > 0
             )
         else:
             self.valid_abbrev_candidate = False
-        
+
         # If token has a period but isn't valid candidate, reset abbr flag
         if self.period_final and not self.valid_abbrev_candidate:
             self.abbr = False
@@ -317,9 +326,11 @@ class PunktToken:
         if self.sentbreak:
             s += "<S>"
         return s
-    
+
     def __repr__(self) -> str:
         """Get a detailed string representation of the token."""
-        return (f"PunktToken(tok='{self.tok}', parastart={self.parastart}, "
-                f"linestart={self.linestart}, sentbreak={self.sentbreak}, "
-                f"abbr={self.abbr}, ellipsis={self.ellipsis})")
+        return (
+            f"PunktToken(tok='{self.tok}', parastart={self.parastart}, "
+            f"linestart={self.linestart}, sentbreak={self.sentbreak}, "
+            f"abbr={self.abbr}, ellipsis={self.ellipsis})"
+        )

@@ -134,12 +134,12 @@ class PunktSentenceTokenizer(PunktBase):
             whitespace_cache_size: Size of the whitespace index cache
         """
         super().__init__(lang_vars, token_cls)
-        
+
         # Store cache sizes
         self._cache_size = cache_size
         self._paragraph_cache_size = paragraph_cache_size
         self._enable_paragraph_caching = enable_paragraph_caching
-        
+
         # If a training text (or pre-trained parameters) is provided,
         # use it to set the parameters.
         if train_text:
@@ -632,8 +632,8 @@ class PunktSentenceTokenizer(PunktBase):
                 return "Abbreviation with orthographic heuristic"
             # Use cached lookup for sentence starters
             if token2.first_upper and self._is_sent_starter(next_typ):
-                    token1.sentbreak = True
-                    return "Abbreviation with sentence starter"
+                token1.sentbreak = True
+                return "Abbreviation with sentence starter"
 
         # Check for initials or ordinals.
         if tok_is_initial or typ == "##number##":
@@ -666,7 +666,7 @@ class PunktSentenceTokenizer(PunktBase):
         # Simple case for punctuation tokens - use set lookup instead of tuple comparison
         if token.tok in (";", ":", ",", ".", "!", "?"):
             return False
-            
+
         # Get orthographic context
         ortho = self._params.ortho_context.get(token.type_no_sentperiod, 0)
 
@@ -695,7 +695,7 @@ class PunktSentenceTokenizer(PunktBase):
     def _is_sent_starter(self, token_type: str) -> bool:
         """
         Check if a token type is a known sentence starter.
-        
+
         This is a wrapper around the module-level cached function.
 
         Args:
@@ -706,9 +706,9 @@ class PunktSentenceTokenizer(PunktBase):
         """
         # Get sentence starters set
         sent_starters = self._params.sent_starters
-        
+
         # Convert to frozenset if needed for caching
         if not isinstance(sent_starters, frozenset):
             sent_starters = frozenset(sent_starters)
-            
+
         return is_sent_starter(sent_starters, token_type)

@@ -8,6 +8,9 @@ abbreviations, ellipses, and other non-sentence-ending contexts.
 __version__ = "0.4.1"
 
 # Core classes
+# Import for type annotations
+from typing import List
+
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
@@ -21,9 +24,6 @@ from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 # Trainers
 from nupunkt.trainers.base_trainer import PunktTrainer
 
-
-# Import for type annotations
-from typing import List
 
 # Function for quick and easy sentence tokenization
 def sent_tokenize(text: str) -> List[str]:

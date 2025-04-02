@@ -12,7 +12,6 @@ Usage:
 """
 
 import argparse
-import os
 import sys
 import time
 from pathlib import Path
@@ -61,7 +60,7 @@ def convert_model(
     print(f"Model loaded in {load_time:.3f} seconds")
 
     # Get input file size
-    input_size = os.path.getsize(input_path)
+    input_size = Path(input_path).stat().st_size
     print(f"Input file size: {input_size / 1024:.2f} KB")
 
     # Convert the model
@@ -83,7 +82,7 @@ def convert_model(
     print(f"Conversion completed in {convert_time:.3f} seconds")
 
     # Get output file size
-    output_size = os.path.getsize(output_path)
+    output_size = Path(output_path).stat().st_size
     print(f"Output file size: {output_size / 1024:.2f} KB")
 
     # Show compression ratio
@@ -146,7 +145,7 @@ def main():
     output_path = Path(args.output)
 
     # Create output directory if it doesn't exist
-    os.makedirs(output_path.parent, exist_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Convert the model
     convert_model(

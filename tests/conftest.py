@@ -1,6 +1,5 @@
 """Pytest configuration for nupunkt tests."""
 
-import os
 from pathlib import Path
 from typing import List
 
@@ -72,7 +71,7 @@ def data_dir() -> Path:
 def create_test_data(data_dir) -> None:
     """Create some test data files."""
     # Create a small JSONL file for testing
-    os.makedirs(data_dir, exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
     jsonl_path = data_dir / "test_small.jsonl"
 
     with open(jsonl_path, "w", encoding="utf-8") as f:

@@ -80,7 +80,7 @@ def main() -> None:
 
     # Get the text to tokenize
     if args.file:
-        with open(args.file, "r", encoding="utf-8") as f:
+        with open(args.file, encoding="utf-8") as f:
             text = f.read()
     elif args.text:
         text = args.text

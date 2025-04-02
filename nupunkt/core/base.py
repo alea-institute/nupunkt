@@ -17,31 +17,31 @@ from nupunkt.core.tokens import PunktToken, create_punkt_token
 def is_abbreviation(abbrev_set: frozenset, candidate: str) -> bool:
     """
     Check if a candidate is a known abbreviation, using cached lookups.
-    
+
     Args:
         abbrev_set: A frozenset of known abbreviations
         candidate: The candidate string to check
-        
+
     Returns:
         True if the candidate is a known abbreviation, False otherwise
     """
     # Check if the token itself is a known abbreviation
     if candidate in abbrev_set:
         return True
-        
+
     # Check if the last part after a dash is a known abbreviation
     if "-" in candidate:
         dash_part = candidate.split("-")[-1]
         if dash_part in abbrev_set:
             return True
-            
+
     # Special handling for period-separated abbreviations like U.S.C.
     # Check if the version without internal periods is in abbrev_types
     if "." in candidate:
         no_periods = candidate.replace(".", "")
         if no_periods in abbrev_set:
             return True
-            
+
     return False
 
 
@@ -154,11 +154,11 @@ class PunktBase:
                 abbrev_set = (
                     getattr(self._params, "_frozen_abbrev_types", None) or self._params.abbrev_types
                 )
-                
+
                 # Convert to frozenset if it's not already (for caching)
                 if not isinstance(abbrev_set, frozenset):
                     abbrev_set = frozenset(abbrev_set)
-                
+
                 # Use the module-level cached function
                 if is_abbreviation(abbrev_set, candidate):
                     token.abbr = True
@@ -168,7 +168,7 @@ class PunktBase:
     def _is_abbreviation(self, candidate: str) -> bool:
         """
         Check if a candidate is a known abbreviation.
-        
+
         This is a wrapper around the module-level cached function.
 
         Args:
@@ -181,9 +181,9 @@ class PunktBase:
         abbrev_set = (
             getattr(self._params, "_frozen_abbrev_types", None) or self._params.abbrev_types
         )
-        
+
         # Convert to frozenset if it's not already (for caching)
         if not isinstance(abbrev_set, frozenset):
             abbrev_set = frozenset(abbrev_set)
-            
+
         return is_abbreviation(abbrev_set, candidate)

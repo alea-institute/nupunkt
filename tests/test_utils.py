@@ -1,6 +1,5 @@
 """Basic tests for nupunkt utility functions."""
 
-import json
 import tempfile
 from pathlib import Path
 
@@ -180,8 +179,7 @@ def test_compression_benchmark(benchmark):
         "nested": [{"id": i, "name": f"item_{i}" * 5, "active": i % 2 == 0} for i in range(50)],
     }
 
-    # Convert to string first to ensure we're testing just the compression
-    json_str = json.dumps(test_data)
+    # Prepare data for compression benchmarking
 
     def compress_func():
         with tempfile.NamedTemporaryFile(suffix=".json.xz", delete=True) as tmp:

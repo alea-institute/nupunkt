@@ -154,10 +154,10 @@ class PunktParameters:
     def to_json(self) -> Dict[str, Any]:
         """Convert parameters to a JSON-serializable dictionary."""
         return {
-            "abbrev_types": sorted(list(self.abbrev_types)),
+            "abbrev_types": sorted(self.abbrev_types),
             "collocations": sorted([[c[0], c[1]] for c in self.collocations]),
-            "sent_starters": sorted(list(self.sent_starters)),
-            "ortho_context": {k: v for k, v in self.ortho_context.items()},
+            "sent_starters": sorted(self.sent_starters),
+            "ortho_context": dict(self.ortho_context.items()),
         }
 
     @classmethod
@@ -165,7 +165,7 @@ class PunktParameters:
         """Create a PunktParameters instance from a JSON dictionary."""
         params = cls()
         params.abbrev_types = set(data.get("abbrev_types", []))
-        params.collocations = set(tuple(c) for c in data.get("collocations", []))
+        params.collocations = {tuple(c) for c in data.get("collocations", [])}
         params.sent_starters = set(data.get("sent_starters", []))
         params.ortho_context = defaultdict(int)
         for k, v in data.get("ortho_context", {}).items():

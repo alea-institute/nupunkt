@@ -14,7 +14,6 @@ Usage:
 """
 
 import argparse
-import os
 import sys
 import time
 from collections import Counter
@@ -62,10 +61,7 @@ def load_model(input_path: Path) -> Dict[str, Any]:
         model_format = "binary"
     else:
         data = load_compressed_json(input_path)
-        if str(input_path).endswith(".json.xz"):
-            model_format = "json_xz"
-        else:
-            model_format = "json"
+        model_format = "json_xz" if str(input_path).endswith(".json.xz") else "json"
 
     load_time = time.time() - start_time
 
@@ -80,7 +76,7 @@ def load_model(input_path: Path) -> Dict[str, Any]:
     return {
         "path": input_path,
         "format": model_format,
-        "size": os.path.getsize(input_path),
+        "size": Path(input_path).stat().st_size,
         "load_time": load_time,
         "params": params,
         "trainer_params": trainer_params,
@@ -113,7 +109,7 @@ def display_model_info(model_data: Dict[str, Any], show_stats: bool = False) -> 
         print("\nTrainer parameters:")
         for key, value in trainer_params.items():
             # Skip large collections like common_abbrevs
-            if isinstance(value, (list, dict, set)) and len(value) > 10:
+            if isinstance(value, list | dict | set) and len(value) > 10:
                 print(f"  {key}: {len(value)} items")
             else:
                 print(f"  {key}: {value}")
@@ -143,7 +139,7 @@ def display_model_stats(model_data: Dict[str, Any]) -> None:
             print(f"    {letter}: {count}")
 
         print("\n  Abbreviation examples:")
-        for abbr in sorted(list(abbrev_types))[:10]:
+        for abbr in sorted(abbrev_types)[:10]:
             print(f"    {abbr}")
 
     # Collocation statistics
@@ -223,7 +219,7 @@ def convert_model(
     print(f"Conversion completed in {convert_time:.3f} seconds")
 
     # Get output file size
-    output_size = os.path.getsize(output_path)
+    output_size = Path(output_path).stat().st_size
     print(f"Output file size: {format_size(output_size)}")
 
     # Show compression ratio
@@ -292,7 +288,7 @@ def main():
         output_path = Path(args.convert)
 
         # Create output directory if it doesn't exist
-        os.makedirs(output_path.parent, exist_ok=True)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             convert_model(

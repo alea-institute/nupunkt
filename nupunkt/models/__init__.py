@@ -4,11 +4,8 @@ Model package for nupunkt.
 This module provides functionality for loading and optimizing the default pre-trained model.
 """
 
-import json
-import os
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, Optional, Union
 
 from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 from nupunkt.utils.compression import (

@@ -9,7 +9,6 @@ This script:
 """
 
 import argparse
-import os
 import sys
 import time
 from pathlib import Path
@@ -35,7 +34,7 @@ def optimize_model(format_type, compression_method, compression_level, output_pa
     data = load_compressed_json(current_model_path)
 
     # Get original file size
-    original_size = os.path.getsize(current_model_path)
+    original_size = Path(current_model_path).stat().st_size
     print(f"Original size: {original_size / 1024:.2f} KB")
 
     # Determine output path
@@ -64,7 +63,7 @@ def optimize_model(format_type, compression_method, compression_level, output_pa
         )
 
     # Get new file size
-    new_size = os.path.getsize(output_path)
+    new_size = Path(output_path).stat().st_size
     print(f"New size: {new_size / 1024:.2f} KB")
 
     # Calculate compression ratio

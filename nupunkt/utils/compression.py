@@ -55,7 +55,7 @@ def save_compressed_json(
             f.write(json_str)
     else:
         # Save as regular JSON
-        with open(file_path, "w", encoding="utf-8") as f:
+        with Path(file_path).open("w", encoding="utf-8") as f:
             f.write(json_str)
 
 
@@ -75,7 +75,7 @@ def load_compressed_json(file_path: Union[str, Path], encoding: str = "utf-8") -
         try:
             return load_binary_model(file_path)
         except Exception as e:
-            raise ValueError(f"Failed to load binary model: {e}")
+            raise ValueError(f"Failed to load binary model: {e}") from e
 
     # Convert Path to string if needed
     if isinstance(file_path, Path):
@@ -95,12 +95,12 @@ def load_compressed_json(file_path: Union[str, Path], encoding: str = "utf-8") -
                     return detected_xz_data
             except (lzma.LZMAError, json.JSONDecodeError):
                 # Not a compressed file, load as regular JSON
-                with open(file_path, "r", encoding=encoding) as f:
+                with Path(file_path).open(encoding=encoding) as f:
                     regular_json_data: Dict[str, Any] = json.load(f)
                     return regular_json_data
     except Exception:
         # As a fallback, try regular JSON
-        with open(file_path, "r", encoding=encoding) as f:
+        with Path(file_path).open(encoding=encoding) as f:
             fallback_json_data: Dict[str, Any] = json.load(f)
             return fallback_json_data
 
@@ -142,17 +142,12 @@ def save_binary_model(
         file_path = file_path + ".bin"
 
     # Extract data from the dictionary - handle both direct format and trainer format
-    if "parameters" in data:
-        # This is the trainer format
-        params = data["parameters"]
-    else:
-        # This is the direct format
-        params = data
+    params = data.get("parameters", data)
 
     abbrev_types = sorted(params.get("abbrev_types", []))
     collocations = sorted([[c[0], c[1]] for c in params.get("collocations", [])])
     sent_starters = sorted(params.get("sent_starters", []))
-    ortho_context = {k: v for k, v in params.get("ortho_context", {}).items()}
+    ortho_context = dict(params.get("ortho_context", {}).items())
 
     # Prepare binary data
     binary_data = bytearray()
@@ -211,7 +206,7 @@ def save_binary_model(
     header.extend(struct.pack("<I", uncompressed_size))
 
     # Write to file
-    with open(file_path, "wb") as f:
+    with Path(file_path).open("wb") as f:
         f.write(header)
         f.write(binary_data)
 
@@ -226,7 +221,7 @@ def load_binary_model(file_path: Union[str, Path]) -> Dict[str, Any]:
     Returns:
         The loaded data as a dictionary
     """
-    with open(file_path, "rb") as f:
+    with Path(file_path).open("rb") as f:
         # Read and validate header
         magic = f.read(4)
         if magic != b"NPKT":
@@ -341,7 +336,6 @@ def compare_formats(
     Returns:
         Dictionary with format names and their file sizes
     """
-    import os
     import tempfile
     from pathlib import Path
 
@@ -350,26 +344,26 @@ def compare_formats(
         output_dir = Path(temp_dir)
     else:
         output_dir = Path(output_dir)
-        os.makedirs(output_dir, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     results = {}
 
     # Test JSON format
     json_path = output_dir / "model_test.json"
     save_compressed_json(data, json_path, use_compression=False)
-    results["json"] = os.path.getsize(json_path)
+    results["json"] = json_path.stat().st_size
 
     # Test JSON+XZ format with different compression levels
     for level in [1, 3, 6, 9]:
         xz_path = output_dir / f"model_test_level{level}.json.xz"
         save_compressed_json(data, xz_path, level=level, use_compression=True)
-        results[f"json_xz_level{level}"] = os.path.getsize(xz_path)
+        results[f"json_xz_level{level}"] = xz_path.stat().st_size
 
     # Test binary format with different compression methods
     for method in ["none", "zlib", "lzma", "gzip"]:
         for level in [1, 6, 9]:
             bin_path = output_dir / f"model_test_{method}_level{level}.bin"
             save_binary_model(data, bin_path, compression_method=method, level=level)
-            results[f"binary_{method}_level{level}"] = os.path.getsize(bin_path)
+            results[f"binary_{method}_level{level}"] = bin_path.stat().st_size
 
     return results

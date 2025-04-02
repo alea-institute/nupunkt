@@ -67,7 +67,7 @@ def test_punkt_language_vars_pattern_matching():
     assert pattern.search("U.S.A. ")
 
     # Test word tokenize pattern
-    word_pattern = lang_vars.word_tokenize_pattern
+    assert lang_vars.word_tokenize_pattern is not None
     assert "Word" in lang_vars.word_tokenize("Word")
     assert "123" in lang_vars.word_tokenize("123")
 

@@ -1,6 +1,5 @@
 """Unit tests for nupunkt token module."""
 
-
 import pytest
 
 from nupunkt.core.tokens import PunktToken, create_punkt_token
@@ -164,27 +163,54 @@ def test_token_factory_benchmark(benchmark):
     assert tokens[0].tok == "word0"
     assert tokens[1].tok == "abbrev1."
     assert tokens[2].tok == "Mixed2!"
-    
-    
+
+
 @pytest.mark.benchmark(group="tokens")
 def test_token_factory_with_cache_benchmark(benchmark):
     """Benchmark token creation through the factory function with cache hits."""
 
     # Pre-populate the token cache with some common tokens
     common_tokens = [
-        "the", "of", "and", "a", "to", "in", "is", "that", "it", "was",
-        "for", "on", "are", "as", "with", "his", "they", "at", "be", "this",
-        "from", "have", "or", "by", "one", "had", "not", "but", "what", "all",
+        "the",
+        "of",
+        "and",
+        "a",
+        "to",
+        "in",
+        "is",
+        "that",
+        "it",
+        "was",
+        "for",
+        "on",
+        "are",
+        "as",
+        "with",
+        "his",
+        "they",
+        "at",
+        "be",
+        "this",
+        "from",
+        "have",
+        "or",
+        "by",
+        "one",
+        "had",
+        "not",
+        "but",
+        "what",
+        "all",
     ]
     for tok in common_tokens:
         create_punkt_token(tok)
-    
+
     def create_tokens_with_cache():
         tokens = []
         # First add common tokens that should hit the cache
         for tok in common_tokens:
             tokens.append(create_punkt_token(tok))
-        
+
         # Then add some new tokens
         for i in range(500):
             if i % 3 == 0:
@@ -288,10 +314,10 @@ def test_slots_vs_dict():
     """Test memory efficiency of slots vs dict."""
     # Create a token using the slots-based class
     token = PunktToken("test")
-    
+
     # Verify it uses slots
     assert not hasattr(token, "__dict__")
-    
+
     # Verify all attributes are accessible
     assert token.tok == "test"
     assert token.parastart is False
@@ -301,7 +327,7 @@ def test_slots_vs_dict():
     assert token.ellipsis is False
     assert token.period_final is False
     assert token.type == "test"
-    
+
     # Test lazy property initialization
     assert token.is_ellipsis is False
     # After access, the property should be calculated and cached

@@ -5,9 +5,9 @@ This module provides utility functions for iterating through sequences
 with specialized behaviors needed for the Punkt algorithm.
 """
 
-from typing import Any, Iterator, List, Optional, Sequence, Tuple, TypeVar
+from typing import Any, Iterator, Optional, Sequence, Tuple, TypeVar
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def pair_iter(iterable: Iterator[Any]) -> Iterator[Tuple[Any, Optional[Any]]]:
@@ -35,20 +35,20 @@ def pair_iter_fast(items: Sequence[T]) -> Iterator[Tuple[T, Optional[T]]]:
     """
     Fast implementation of pair iteration for sequences (lists, tuples).
     This avoids the iterator overhead for known sequence types.
-    
+
     Args:
         items: A sequence (list or tuple) to iterate through in pairs
-        
+
     Yields:
         Pairs of (current_item, next_item) where next_item is None for the last item
     """
     length = len(items)
     if length == 0:
         return
-        
+
     # Handle all but the last item
     for i in range(length - 1):
         yield items[i], items[i + 1]
-    
+
     # Handle the last item (with None as the next item)
     yield items[length - 1], None

@@ -5,6 +5,7 @@ import math
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, ClassVar, Dict, Iterator, List, Optional, Set, Tuple, Type, Union
 
 # -------------------------------------------------------------------
@@ -111,18 +112,18 @@ class PunktParameters:
     def to_json(self) -> Dict[str, Any]:
         """Convert parameters to a JSON-serializable dictionary."""
         return {
-            "abbrev_types": sorted(list(self.abbrev_types)),
+            "abbrev_types": sorted(self.abbrev_types),
             "collocations": sorted([[c[0], c[1]] for c in self.collocations]),
-            "sent_starters": sorted(list(self.sent_starters)),
-            "ortho_context": {k: v for k, v in self.ortho_context.items()},
+            "sent_starters": sorted(self.sent_starters),
+            "ortho_context": dict(self.ortho_context.items()),
         }
 
     @classmethod
-    def from_json(cls, data: Dict[str, Any]) -> "PunktParameters":
+    def from_json(cls, data: Dict[str, Any]) -> PunktParameters:
         """Create a PunktParameters instance from a JSON dictionary."""
         params = cls()
         params.abbrev_types = set(data.get("abbrev_types", []))
-        params.collocations = set(tuple(c) for c in data.get("collocations", []))
+        params.collocations = {tuple(c) for c in data.get("collocations", [])}
         params.sent_starters = set(data.get("sent_starters", []))
         params.ortho_context = defaultdict(int)
         for k, v in data.get("ortho_context", {}).items():
@@ -131,13 +132,13 @@ class PunktParameters:
 
     def save(self, file_path: str) -> None:
         """Save parameters to a JSON file."""
-        with open(file_path, "w", encoding="utf-8") as f:
+        with Path(file_path).open("w", encoding="utf-8") as f:
             json.dump(self.to_json(), f, ensure_ascii=False, indent=2)
 
     @classmethod
-    def load(cls, file_path: str) -> "PunktParameters":
+    def load(cls, file_path: str) -> PunktParameters:
         """Load parameters from a JSON file."""
-        with open(file_path, "r", encoding="utf-8") as f:
+        with Path(file_path).open(encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_json(data)
 
@@ -177,7 +178,7 @@ class PunktToken:
         self.valid_abbrev_candidate = (
             self.period_final
             and not re.search(r"[^\w.]", self.tok)
-            and not (self.type == "##number##")
+            and self.type != "##number##"
             and alpha_count >= digit_count  # Must have at least as many letters as digits
             and alpha_count > 0  # Must have at least one letter
         )
@@ -312,14 +313,13 @@ class PunktBase:
                 candidate = token.tok[:-1].lower()
 
                 # Check if the token itself is a known abbreviation
-                if candidate in self._params.abbrev_types:
-                    token.abbr = True
-                # Check if the last part after a dash is a known abbreviation
-                elif "-" in candidate and candidate.split("-")[-1] in self._params.abbrev_types:
-                    token.abbr = True
-                # Special handling for period-separated abbreviations like U.S.C.
-                # Check if the version without internal periods is in abbrev_types
-                elif "." in candidate and candidate.replace(".", "") in self._params.abbrev_types:
+                if (
+                    candidate in self._params.abbrev_types
+                    or "-" in candidate
+                    and candidate.split("-")[-1] in self._params.abbrev_types
+                    or "." in candidate
+                    and candidate.replace(".", "") in self._params.abbrev_types
+                ):
                     token.abbr = True
                 else:
                     token.sentbreak = True
@@ -414,12 +414,16 @@ class PunktTrainer(PunktBase):
                 print(f"Preserving {len(original_abbrevs)} existing abbreviations")
 
         if verbose:
+            print("Tokenizing text...")
+            # Check for tqdm using importlib instead of direct import
             try:
-                from tqdm import tqdm
+                import importlib.util
 
-                print("Tokenizing text...")
-            except ImportError:
-                tqdm = lambda x, **kwargs: x
+                if importlib.util.find_spec("tqdm") is not None:
+                    pass  # tqdm is available
+                else:
+                    print("Note: Install tqdm for progress bars during training.")
+            except (ImportError, AttributeError):
                 print("Note: Install tqdm for progress bars during training.")
 
         # Tokenize text
@@ -801,7 +805,7 @@ class PunktTrainer(PunktBase):
         else:
             starter_iter = self._find_sent_starters()
 
-        for typ, ll in starter_iter:
+        for typ, _ll in starter_iter:
             self._params.sent_starters.add(typ)
 
         if verbose:
@@ -824,7 +828,7 @@ class PunktTrainer(PunktBase):
         else:
             collocation_iter = self._find_collocations()
 
-        for (typ1, typ2), ll in collocation_iter:
+        for (typ1, typ2), _ll in collocation_iter:
             self._params.collocations.add((typ1, typ2))
 
         # Ensure common abbreviations are preserved after statistical analysis
@@ -934,7 +938,7 @@ class PunktTrainer(PunktBase):
         data: Dict[str, Any],
         lang_vars: Optional[PunktLanguageVars] = None,
         token_cls: Optional[Type[PunktToken]] = None,
-    ) -> "PunktTrainer":
+    ) -> PunktTrainer:
         """Create a PunktTrainer instance from a JSON dictionary."""
         # Create a new instance
         trainer = cls(lang_vars=lang_vars, token_cls=token_cls or PunktToken)
@@ -966,7 +970,7 @@ class PunktTrainer(PunktBase):
 
     def save(self, file_path: str) -> None:
         """Save trainer configuration and parameters to a JSON file."""
-        with open(file_path, "w", encoding="utf-8") as f:
+        with Path(file_path).open("w", encoding="utf-8") as f:
             json.dump(self.to_json(), f, ensure_ascii=False, indent=2)
 
     @classmethod
@@ -975,9 +979,9 @@ class PunktTrainer(PunktBase):
         file_path: str,
         lang_vars: Optional[PunktLanguageVars] = None,
         token_cls: Optional[Type[PunktToken]] = None,
-    ) -> "PunktTrainer":
+    ) -> PunktTrainer:
         """Load trainer configuration and parameters from a JSON file."""
-        with open(file_path, "r", encoding="utf-8") as f:
+        with Path(file_path).open(encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_json(data, lang_vars, token_cls)
 
@@ -1044,7 +1048,7 @@ class PunktSentenceTokenizer(PunktBase):
         data: Dict[str, Any],
         lang_vars: Optional[PunktLanguageVars] = None,
         token_cls: Optional[Type[PunktToken]] = None,
-    ) -> "PunktSentenceTokenizer":
+    ) -> PunktSentenceTokenizer:
         """Create a PunktSentenceTokenizer from a JSON dictionary."""
         # First create a trainer from the JSON data
         trainer = PunktTrainer.from_json(data, lang_vars, token_cls)
@@ -1054,7 +1058,7 @@ class PunktSentenceTokenizer(PunktBase):
 
     def save(self, file_path: str) -> None:
         """Save the tokenizer to a JSON file."""
-        with open(file_path, "w", encoding="utf-8") as f:
+        with Path(file_path).open("w", encoding="utf-8") as f:
             json.dump(self.to_json(), f, ensure_ascii=False, indent=2)
 
     @classmethod
@@ -1063,9 +1067,9 @@ class PunktSentenceTokenizer(PunktBase):
         file_path: str,
         lang_vars: Optional[PunktLanguageVars] = None,
         token_cls: Optional[Type[PunktToken]] = None,
-    ) -> "PunktSentenceTokenizer":
+    ) -> PunktSentenceTokenizer:
         """Load a PunktSentenceTokenizer from a JSON file."""
-        with open(file_path, "r", encoding="utf-8") as f:
+        with Path(file_path).open(encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_json(data, lang_vars, token_cls)
 
@@ -1131,10 +1135,7 @@ class PunktSentenceTokenizer(PunktBase):
         for match, context in self._match_potential_end_contexts(text):
             if self.text_contains_sentbreak(context):
                 yield slice(last_break, match.end())
-                if match.group("next_tok"):
-                    last_break = match.start("next_tok")
-                else:
-                    last_break = match.end()
+                last_break = match.start("next_tok") if match.group("next_tok") else match.end()
         yield slice(last_break, len(text.rstrip()))
 
     def _realign_boundaries(self, text: str, slices: List[slice]) -> Iterator[slice]:
@@ -1155,7 +1156,6 @@ class PunktSentenceTokenizer(PunktBase):
                     yield slice1
 
     def text_contains_sentbreak(self, text: str) -> bool:
-        found = False
         tokens = list(self._annotate_tokens(self._tokenize_words(text)))
         return any(token.sentbreak for token in tokens)
 
