@@ -10,12 +10,60 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 from nupunkt.core.base import PunktBase
-from nupunkt.core.constants import ORTHO_BEG_LC, ORTHO_LC, ORTHO_MID_UC, ORTHO_UC
+from nupunkt.core.constants import (
+    DOC_TOKENIZE_CACHE_SIZE,
+    ORTHO_BEG_LC,
+    ORTHO_CACHE_SIZE,
+    ORTHO_LC,
+    ORTHO_MID_UC,
+    ORTHO_UC,
+    PARA_TOKENIZE_CACHE_SIZE,
+    SENT_STARTER_CACHE_SIZE,
+    WHITESPACE_CACHE_SIZE,
+)
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
 from nupunkt.trainers.base_trainer import PunktTrainer
 from nupunkt.utils.iteration import pair_iter
+
+
+@lru_cache(maxsize=ORTHO_CACHE_SIZE)
+def cached_ortho_heuristic(
+    ortho_context: int, type_no_sentperiod: str, first_upper: bool, first_lower: bool
+) -> Union[bool, str]:
+    """
+    Cached implementation of orthographic heuristics.
+
+    Args:
+        ortho_context: The orthographic context value from parameters
+        type_no_sentperiod: The token type without sentence-final period
+        first_upper: Whether the first character is uppercase
+        first_lower: Whether the first character is lowercase
+
+    Returns:
+        True if the token starts a sentence, False if not, "unknown" if uncertain
+    """
+    if first_upper and (ortho_context & ORTHO_LC) and not (ortho_context & ORTHO_MID_UC):
+        return True
+    if first_lower and ((ortho_context & ORTHO_UC) or not (ortho_context & ORTHO_BEG_LC)):
+        return False
+    return "unknown"
+
+
+@lru_cache(maxsize=SENT_STARTER_CACHE_SIZE)
+def is_sent_starter(sent_starters: frozenset, token_type: str) -> bool:
+    """
+    Check if a token type is a known sentence starter, using cached lookups.
+
+    Args:
+        sent_starters: A frozenset of known sentence starters
+        token_type: The token type to check
+
+    Returns:
+        True if the token type is a known sentence starter, False otherwise
+    """
+    return token_type in sent_starters
 
 
 class PunktSentenceTokenizer(PunktBase):
@@ -62,6 +110,12 @@ class PunktSentenceTokenizer(PunktBase):
         lang_vars: Optional[PunktLanguageVars] = None,
         token_cls: Type[PunktToken] = PunktToken,
         include_common_abbrevs: bool = True,  # Whether to include common abbreviations
+        cache_size: int = DOC_TOKENIZE_CACHE_SIZE,  # Size of the sentence tokenization cache
+        paragraph_cache_size: int = PARA_TOKENIZE_CACHE_SIZE,  # Size of the paragraph-level cache
+        enable_paragraph_caching: bool = False,  # Whether to enable paragraph-level caching
+        ortho_cache_size: int = ORTHO_CACHE_SIZE,  # Size of the orthographic heuristic cache
+        sent_starter_cache_size: int = SENT_STARTER_CACHE_SIZE,  # Size of the sentence starter cache
+        whitespace_cache_size: int = WHITESPACE_CACHE_SIZE,  # Size of the whitespace index cache
     ) -> None:
         """
         Initialize the tokenizer, optionally with training text or parameters.
@@ -72,8 +126,20 @@ class PunktSentenceTokenizer(PunktBase):
             lang_vars: Language-specific variables
             token_cls: The token class to use
             include_common_abbrevs: Whether to include common abbreviations
+            cache_size: Size of the document-level tokenization cache
+            paragraph_cache_size: Size of the paragraph-level cache
+            enable_paragraph_caching: Whether to enable paragraph-level caching
+            ortho_cache_size: Size of the orthographic heuristic cache
+            sent_starter_cache_size: Size of the sentence starter cache
+            whitespace_cache_size: Size of the whitespace index cache
         """
         super().__init__(lang_vars, token_cls)
+        
+        # Store cache sizes
+        self._cache_size = cache_size
+        self._paragraph_cache_size = paragraph_cache_size
+        self._enable_paragraph_caching = enable_paragraph_caching
+        
         # If a training text (or pre-trained parameters) is provided,
         # use it to set the parameters.
         if train_text:
@@ -246,7 +312,7 @@ class PunktSentenceTokenizer(PunktBase):
         return [text[start:stop] for start, stop in self.span_tokenize(text, realign_boundaries)]
 
     @staticmethod
-    @lru_cache(maxsize=100)
+    @lru_cache(maxsize=WHITESPACE_CACHE_SIZE)
     def _cached_whitespace_index(text: str) -> int:
         """
         Cached implementation of finding the last whitespace index.
@@ -383,10 +449,7 @@ class PunktSentenceTokenizer(PunktBase):
         for match, context in self._match_potential_end_contexts(text):
             if self.text_contains_sentbreak(context):
                 yield slice(last_break, match.end())
-                if match.group("next_tok"):
-                    last_break = match.start("next_tok")
-                else:
-                    last_break = match.end()
+                last_break = match.start("next_tok") if match.group("next_tok") else match.end()
 
         # Final slice
         if last_break < text_end:
@@ -568,8 +631,7 @@ class PunktSentenceTokenizer(PunktBase):
                 token1.sentbreak = True
                 return "Abbreviation with orthographic heuristic"
             # Use cached lookup for sentence starters
-            if token2.first_upper:
-                if self._is_sent_starter(next_typ):
+            if token2.first_upper and self._is_sent_starter(next_typ):
                     token1.sentbreak = True
                     return "Abbreviation with sentence starter"
 
@@ -602,20 +664,22 @@ class PunktSentenceTokenizer(PunktBase):
             True if the token starts a sentence, False if not, "unknown" if uncertain
         """
         # Simple case for punctuation tokens - use set lookup instead of tuple comparison
-        if token.tok in self._PUNCT_CHARS:
+        if token.tok in (";", ":", ",", ".", "!", "?"):
             return False
+            
+        # Get orthographic context
+        ortho = self._params.ortho_context.get(token.type_no_sentperiod, 0)
 
-        # Use cached implementation for everything else
-        return self._cached_ortho_heuristic(
-            token.type_no_sentperiod, token.first_upper, token.first_lower
+        # Use module-level cached function
+        return cached_ortho_heuristic(
+            ortho, token.type_no_sentperiod, token.first_upper, token.first_lower
         )
 
-    @lru_cache(maxsize=500)
     def _cached_ortho_heuristic(
         self, type_no_sentperiod: str, first_upper: bool, first_lower: bool
     ) -> Union[bool, str]:
         """
-        Cached implementation of orthographic heuristics.
+        Wrapper for the cached implementation of orthographic heuristics.
 
         Args:
             type_no_sentperiod: The token type without sentence-final period
@@ -626,16 +690,13 @@ class PunktSentenceTokenizer(PunktBase):
             True if the token starts a sentence, False if not, "unknown" if uncertain
         """
         ortho = self._params.ortho_context.get(type_no_sentperiod, 0)
-        if first_upper and (ortho & ORTHO_LC) and not (ortho & ORTHO_MID_UC):
-            return True
-        if first_lower and ((ortho & ORTHO_UC) or not (ortho & ORTHO_BEG_LC)):
-            return False
-        return "unknown"
+        return cached_ortho_heuristic(ortho, type_no_sentperiod, first_upper, first_lower)
 
-    @lru_cache(maxsize=500)
     def _is_sent_starter(self, token_type: str) -> bool:
         """
-        Check if a token type is a known sentence starter, using cached lookups.
+        Check if a token type is a known sentence starter.
+        
+        This is a wrapper around the module-level cached function.
 
         Args:
             token_type: The token type to check
@@ -643,4 +704,11 @@ class PunktSentenceTokenizer(PunktBase):
         Returns:
             True if the token type is a known sentence starter, False otherwise
         """
-        return token_type in self._params.sent_starters
+        # Get sentence starters set
+        sent_starters = self._params.sent_starters
+        
+        # Convert to frozenset if needed for caching
+        if not isinstance(sent_starters, frozenset):
+            sent_starters = frozenset(sent_starters)
+            
+        return is_sent_starter(sent_starters, token_type)
