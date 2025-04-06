@@ -1,6 +1,27 @@
 # Changelog
 
-## 0.5.0 (2025-03-31)
+## 0.5.0 (2025-04-05)
+
+### New Features
+
+- **Added paragraph detection functionality:**
+  - New `PunktParagraphTokenizer` for paragraph boundary detection
+  - Paragraph breaks identified at sentence boundaries with multiple newlines
+  - API for paragraph tokenization with span information
+- **Added sentence and paragraph span extraction:**
+  - Contiguous spans that preserve all whitespace
+  - Spans guaranteed to cover entire text without gaps
+  - API for getting spans with text content
+- **Extended public API with new functions:**
+  - `sent_spans()` and `sent_spans_with_text()` for sentence spans
+  - `para_tokenize()`, `para_spans()`, and `para_spans_with_text()` for paragraphs
+- Implemented singleton pattern for efficient model loading
+
+### Performance Improvements
+
+- Optimized model loading with caching mechanisms
+- Single model instance shared across multiple operations
+- Efficient memory usage for repeated sentence/paragraph tokenization
 
 ### Memory Optimizations
 
