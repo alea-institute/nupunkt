@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 (2025-04-05)
+
+### Minor Updates
+
+- Bump version to 0.5.1
+- Documentation improvements
+- Internal code quality enhancements
+
 ## 0.5.0 (2025-04-05)
 
 ### New Features

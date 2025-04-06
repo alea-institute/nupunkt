@@ -6,7 +6,7 @@ abbreviations, ellipses, and other non-sentence-ending contexts. It also support
 paragraph detection based on sentence boundaries and newlines.
 """
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 # Core classes
 from functools import lru_cache
