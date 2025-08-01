@@ -180,3 +180,4 @@ data/train.jsonl.gz
 
 # Profiling data
 profiles/
+.benchmarks

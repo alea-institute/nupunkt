@@ -1,6 +1,6 @@
 [project]
 name = "nupunkt"
-version = "0.5.1"
+version = "0.6.0"
 description = "Next-generation Punkt sentence and paragraph boundary detection with zero dependencies"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,15 +25,14 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Text Processing :: Linguistic",
     "Natural Language :: English",
     "Operating System :: OS Independent",
 ]
-dependencies = [
-    "tqdm>=4.65.0",
-    # lzma is in the standard library for Python 3.3+
-]
+dependencies = []
 
 [project.urls]
 "Homepage" = "https://github.com/alea-institute/nupunkt"
@@ -43,6 +42,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "tqdm>=4.65.0",
     "pytest>=8.0.0",
     "mypy>=1.0.0",
     "ruff>=0.0.280",
@@ -74,7 +74,7 @@ packages = [
 "nupunkt.models" = ["*.json", "*.json.xz", "*.bin"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 line-length = 100
 
 # Enable linters in this section
