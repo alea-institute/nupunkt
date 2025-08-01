@@ -5,7 +5,7 @@ This module provides the base class for Punkt tokenizers and trainers.
 """
 
 from functools import lru_cache
-from typing import Iterator, Optional, Type
+from typing import Iterator, Type
 
 from nupunkt.core.constants import ABBREV_CACHE_SIZE
 from nupunkt.core.language_vars import PunktLanguageVars
@@ -55,9 +55,9 @@ class PunktBase:
 
     def __init__(
         self,
-        lang_vars: Optional[PunktLanguageVars] = None,
+        lang_vars: PunktLanguageVars | None = None,
         token_cls: Type[PunktToken] = PunktToken,
-        params: Optional[PunktParameters] = None,
+        params: PunktParameters | None = None,
     ) -> None:
         """
         Initialize the PunktBase instance.

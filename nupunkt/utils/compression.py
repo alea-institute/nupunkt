@@ -10,7 +10,7 @@ import lzma
 import struct
 import zlib
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 # Binary format version identifier (increment when format changes)
 BINARY_FORMAT_VERSION = 1
@@ -324,7 +324,7 @@ def load_binary_model(file_path: Union[str, Path]) -> Dict[str, Any]:
 
 
 def compare_formats(
-    data: Dict[str, Any], output_dir: Optional[Union[str, Path]] = None
+    data: Dict[str, Any], output_dir: Union[str, Path] | None = None
 ) -> Dict[str, Any]:
     """
     Compare different storage formats for the same model data.

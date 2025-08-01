@@ -15,7 +15,6 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Optional,
     Set,
     Tuple,
     Type,
@@ -100,12 +99,12 @@ class PunktTrainer(PunktBase):
 
     def __init__(
         self,
-        train_text: Optional[str] = None,
+        train_text: str | None = None,
         verbose: bool = False,
-        lang_vars: Optional[PunktLanguageVars] = None,
+        lang_vars: PunktLanguageVars | None = None,
         token_cls: Type[PunktToken] = PunktToken,
         include_common_abbrevs: bool = True,  # Whether to include common abbreviations by default
-        memory_efficient: Optional[bool] = None,  # Whether to use memory-efficient mode
+        memory_efficient: bool | None = None,  # Whether to use memory-efficient mode
     ) -> None:
         """
         Initialize the trainer, optionally with training text.
@@ -1070,8 +1069,8 @@ class PunktTrainer(PunktBase):
     def from_json(
         cls,
         data: Dict[str, Any],
-        lang_vars: Optional[PunktLanguageVars] = None,
-        token_cls: Optional[Type[PunktToken]] = None,
+        lang_vars: PunktLanguageVars | None = None,
+        token_cls: Type[PunktToken] | None = None,
     ) -> "PunktTrainer":
         """
         Create a PunktTrainer instance from a JSON dictionary.
@@ -1147,8 +1146,8 @@ class PunktTrainer(PunktBase):
     def load(
         cls,
         file_path: Union[str, Path],
-        lang_vars: Optional[PunktLanguageVars] = None,
-        token_cls: Optional[Type[PunktToken]] = None,
+        lang_vars: PunktLanguageVars | None = None,
+        token_cls: Type[PunktToken] | None = None,
     ) -> "PunktTrainer":
         """
         Load trainer configuration and parameters from a JSON file, which may be compressed with LZMA.

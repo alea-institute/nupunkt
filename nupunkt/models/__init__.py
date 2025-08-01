@@ -5,7 +5,7 @@ This module provides functionality for loading and optimizing the default pre-tr
 """
 
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 from nupunkt.utils.compression import (
@@ -56,7 +56,7 @@ def load_default_model() -> PunktSentenceTokenizer:
 
 
 def optimize_default_model(
-    output_path: Optional[Union[str, Path]] = None,
+    output_path: Union[str, Path] | None = None,
     format_type: str = "binary",
     compression_method: str = "lzma",
     compression_level: int = 6,
@@ -105,7 +105,7 @@ def optimize_default_model(
     return output_path
 
 
-def compare_model_formats(output_dir: Optional[Union[str, Path]] = None) -> Dict[str, int]:
+def compare_model_formats(output_dir: Union[str, Path] | None = None) -> Dict[str, int]:
     """
     Compare different storage formats for the default model and output their file sizes.
 

@@ -6,7 +6,7 @@ This module provides tokenizer classes for paragraph boundary detection.
 
 import re
 from pathlib import Path
-from typing import List, Optional, Tuple, Type, Union
+from typing import List, Tuple, Type, Union
 
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.tokens import PunktToken
@@ -27,8 +27,8 @@ class PunktParagraphTokenizer:
 
     def __init__(
         self,
-        sentence_tokenizer: Optional[PunktSentenceTokenizer] = None,
-        lang_vars: Optional[PunktLanguageVars] = None,
+        sentence_tokenizer: PunktSentenceTokenizer | None = None,
+        lang_vars: PunktLanguageVars | None = None,
         token_cls: Type[PunktToken] = PunktToken,
     ) -> None:
         """
@@ -171,8 +171,8 @@ class PunktParagraphTokenizer:
     def load(
         cls,
         file_path: Union[str, Path],
-        lang_vars: Optional[PunktLanguageVars] = None,
-        token_cls: Optional[Type[PunktToken]] = None,
+        lang_vars: PunktLanguageVars | None = None,
+        token_cls: Type[PunktToken] | None = None,
     ) -> "PunktParagraphTokenizer":
         """
         Load a PunktParagraphTokenizer from a file.

@@ -6,14 +6,13 @@ abbreviations, ellipses, and other non-sentence-ending contexts. It also support
 paragraph detection based on sentence boundaries and newlines.
 """
 
-__version__ = "0.5.1"
-
 # Core classes
 from functools import lru_cache
 
 # Import for type annotations
 from typing import List, Tuple
 
+from nupunkt._version import __version__
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
@@ -58,48 +57,6 @@ def sent_tokenize(text: str) -> List[str]:
     """
     tokenizer = _get_default_model()
     return list(tokenizer.tokenize(text))
-
-
-# Function for getting sentence spans
-def sent_spans(text: str) -> List[Tuple[int, int]]:
-    """
-    Get sentence spans (start, end character positions) using the default pre-trained model.
-
-    This is a convenience function for getting sentence spans without having
-    to explicitly load a model. The spans are guaranteed to be contiguous,
-    covering the entire input text without gaps.
-
-    Args:
-        text: The text to segment
-
-    Returns:
-        A list of sentence spans as (start_index, end_index) tuples
-    """
-    from sentences import SentenceSegmenter
-
-    segmenter = _get_default_model()
-    return list(SentenceSegmenter.get_sentence_spans(segmenter, text))
-
-
-# Function for getting sentence spans with text
-def sent_spans_with_text(text: str) -> List[Tuple[str, Tuple[int, int]]]:
-    """
-    Get sentences with their spans using the default pre-trained model.
-
-    This is a convenience function for getting sentences with their character spans
-    without having to explicitly load a model. The spans are guaranteed to be
-    contiguous, covering the entire input text without gaps.
-
-    Args:
-        text: The text to segment
-
-    Returns:
-        A list of tuples containing (sentence, (start_index, end_index))
-    """
-    from sentences import SentenceSegmenter
-
-    segmenter = _get_default_model()
-    return list(SentenceSegmenter.get_sentence_spans_with_text(segmenter, text))
 
 
 # Function for paragraph tokenization
@@ -159,6 +116,7 @@ def para_spans_with_text(text: str) -> List[Tuple[str, Tuple[int, int]]]:
 
 
 __all__ = [
+    "__version__",
     "PunktParameters",
     "PunktLanguageVars",
     "PunktToken",
@@ -167,8 +125,6 @@ __all__ = [
     "PunktParagraphTokenizer",
     "load_default_model",
     "sent_tokenize",
-    "sent_spans",
-    "sent_spans_with_text",
     "para_tokenize",
     "para_spans",
     "para_spans_with_text",

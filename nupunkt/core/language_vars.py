@@ -7,7 +7,7 @@ extended for different languages.
 """
 
 import re
-from typing import List, Optional
+from typing import List
 
 
 class PunktLanguageVars:
@@ -28,8 +28,8 @@ class PunktLanguageVars:
 
     def __init__(self) -> None:
         """Initialize language variables with language-specific settings."""
-        self._re_period_context: Optional[re.Pattern] = None
-        self._re_word_tokenizer: Optional[re.Pattern] = None
+        self._re_period_context: re.Pattern | None = None
+        self._re_word_tokenizer: re.Pattern | None = None
 
     @property
     def _re_sent_end_chars(self) -> str:

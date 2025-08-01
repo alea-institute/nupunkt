@@ -7,7 +7,7 @@ This module provides the main tokenizer class for sentence boundary detection.
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterator, List, Tuple, Type, Union
 
 from nupunkt.core.base import PunktBase
 from nupunkt.core.constants import (
@@ -105,9 +105,9 @@ class PunktSentenceTokenizer(PunktBase):
 
     def __init__(
         self,
-        train_text: Optional[Any] = None,
+        train_text: Any | None = None,
         verbose: bool = False,
-        lang_vars: Optional[PunktLanguageVars] = None,
+        lang_vars: PunktLanguageVars | None = None,
         token_cls: Type[PunktToken] = PunktToken,
         include_common_abbrevs: bool = True,  # Whether to include common abbreviations
         cache_size: int = DOC_TOKENIZE_CACHE_SIZE,  # Size of the sentence tokenization cache
@@ -188,8 +188,8 @@ class PunktSentenceTokenizer(PunktBase):
     def from_json(
         cls,
         data: Dict[str, Any],
-        lang_vars: Optional[PunktLanguageVars] = None,
-        token_cls: Optional[Type[PunktToken]] = None,
+        lang_vars: PunktLanguageVars | None = None,
+        token_cls: Type[PunktToken] | None = None,
     ) -> "PunktSentenceTokenizer":
         """
         Create a PunktSentenceTokenizer from a JSON dictionary.
@@ -229,8 +229,8 @@ class PunktSentenceTokenizer(PunktBase):
     def load(
         cls,
         file_path: Union[str, Path],
-        lang_vars: Optional[PunktLanguageVars] = None,
-        token_cls: Optional[Type[PunktToken]] = None,
+        lang_vars: PunktLanguageVars | None = None,
+        token_cls: Type[PunktToken] | None = None,
     ) -> "PunktSentenceTokenizer":
         """
         Load a PunktSentenceTokenizer from a JSON file, which may be compressed with LZMA.
@@ -365,7 +365,7 @@ class PunktSentenceTokenizer(PunktBase):
         matches: List[Tuple[re.Match, str]] = []
 
         previous_slice = slice(0, 0)
-        previous_match: Optional[re.Match] = None
+        previous_match: re.Match | None = None
 
         # Special handling for ellipsis followed by capital letter - only check if text contains '..'
         ellipsis_positions = []
@@ -572,9 +572,7 @@ class PunktSentenceTokenizer(PunktBase):
             self._second_pass_annotation(token1, token2)
             yield token1
 
-    def _second_pass_annotation(
-        self, token1: PunktToken, token2: Optional[PunktToken]
-    ) -> Optional[str]:
+    def _second_pass_annotation(self, token1: PunktToken, token2: PunktToken | None) -> str | None:
         """
         Perform second-pass annotation on a token.
 
@@ -634,6 +632,23 @@ class PunktSentenceTokenizer(PunktBase):
             if token2.first_upper and self._is_sent_starter(next_typ):
                 token1.sentbreak = True
                 return "Abbreviation with sentence starter"
+
+        # **[NEW]** General-purpose sentence break rule.
+        # If a token is not an abbreviation and it's not an initial,
+        # and the next token starts with an uppercase letter, then it's a sentence break.
+        # This is a strong, high-precision indicator.
+        if not token1.abbr and not tok_is_initial and token2.first_upper:
+            is_sent_starter = self._ortho_heuristic(token2)
+            if is_sent_starter is True:
+                token1.sentbreak = True
+                return "General rule: non-abbreviation followed by orthographic sentence starter"
+            if self._is_sent_starter(next_typ):
+                token1.sentbreak = True
+                return "General rule: non-abbreviation followed by known sentence starter"
+            # Default catch-all for uppercase words after a period.
+            if is_sent_starter == "unknown":
+                token1.sentbreak = True
+                return "General rule: non-abbreviation followed by uppercase word"
 
         # Check for initials or ordinals.
         if tok_is_initial or typ == "##number##":

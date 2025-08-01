@@ -11,7 +11,6 @@ This script:
 import argparse
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Add the parent directory to the path so we can import nupunkt
 script_dir = Path(__file__).parent
@@ -39,7 +38,7 @@ The temperature was 32 deg. C. It was quite hot that day.
     """
 
 
-def tokenize_text(text: str, model_path: Optional[Path] = None) -> None:
+def tokenize_text(text: str, model_path: Path | None = None) -> None:
     """
     Tokenize the given text and print the results.
 

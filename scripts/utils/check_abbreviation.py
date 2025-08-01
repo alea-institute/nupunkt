@@ -10,7 +10,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Optional, Set, Tuple
+from typing import Set, Tuple
 
 # Add the parent directory to the path so we can import nupunkt
 script_dir = Path(__file__).parent
@@ -22,7 +22,7 @@ from nupunkt.core.parameters import PunktParameters
 from nupunkt.models import load_default_model
 
 
-def check_abbreviation(token: str, model_path: Optional[str] = None) -> Tuple[bool, Set[str]]:
+def check_abbreviation(token: str, model_path: str | None = None) -> Tuple[bool, Set[str]]:
     """
     Check if a token is in the model's abbreviation list.
 

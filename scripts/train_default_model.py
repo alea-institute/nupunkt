@@ -16,7 +16,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 # For progress bars
 try:
@@ -57,7 +57,7 @@ def load_abbreviations(file_path: Path) -> List[str]:
     return cleaned_abbrevs
 
 
-def load_jsonl_text(file_path: Path, max_samples: Optional[int] = None) -> str:
+def load_jsonl_text(file_path: Path, max_samples: int | None = None) -> str:
     """Load text from a compressed JSONL file with progress bar."""
     combined_text = ""
     sample_count = 0

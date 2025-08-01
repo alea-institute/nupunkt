@@ -6,7 +6,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Pattern, Set, Tuple, Union
+from typing import Any, Dict, Pattern, Set, Tuple, Union
 
 from nupunkt.utils.compression import (
     load_compressed_json,
@@ -33,8 +33,8 @@ class PunktParameters:
     ortho_context: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
     # Cached regex patterns for efficient lookups
-    _abbrev_pattern: Optional[Pattern] = field(default=None, repr=False)
-    _sent_starter_pattern: Optional[Pattern] = field(default=None, repr=False)
+    _abbrev_pattern: Pattern | None = field(default=None, repr=False)
+    _sent_starter_pattern: Pattern | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """Initialize any derived attributes after instance creation."""
