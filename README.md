@@ -1,6 +1,6 @@
 # nupunkt
 
-**nupunkt** is a next-generation implementation of the Punkt algorithm for sentence boundary detection with zero runtime dependencies.
+A high-precision, high-throughput sentence boundary detection library optimized for legal text processing, with zero runtime dependencies.
 
 [![PyPI version](https://badge.fury.io/py/nupunkt.svg)](https://badge.fury.io/py/nupunkt)
 [![Python Version](https://img.shields.io/pypi/pyversions/nupunkt.svg)](https://pypi.org/project/nupunkt/)
@@ -8,15 +8,27 @@
 
 ## Overview
 
-nupunkt accurately detects sentence boundaries in text, even in challenging cases where periods are used for abbreviations, ellipses, and other non-sentence-ending contexts. It's built on the statistical principles of the Punkt algorithm, with modern enhancements for improved handling of edge cases.
+nupunkt is a next-generation implementation of the Punkt algorithm specifically optimized for legal text processing. It accurately detects sentence boundaries in complex legal documents where periods are used for abbreviations, citations, and other non-sentence-ending contexts.
 
 Key features:
-- **Minimal dependencies**: Only requires Python 3.11+ and tqdm for progress bars
-- **Pre-trained model**: Ready to use out of the box
-- **Fast and accurate**: Optimized implementation of the Punkt algorithm
+- **Zero dependencies**: Pure Python 3.11+ (tqdm optional for progress bars)
+- **High precision**: 91.1% precision on legal text benchmarks
+- **High performance**: Processes 10+ million characters per second on standard CPU hardware
+- **Pre-trained model**: Ready to use with legal-optimized abbreviations
 - **Trainable**: Can be trained on domain-specific text
-- **Full support for ellipsis**: Handles various ellipsis patterns
-- **Type annotations**: Complete type hints for better IDE integration
+- **Adaptive mode**: NEW! Dynamic pattern recognition for abbreviations
+- **Paragraph detection**: Split text into both sentences and paragraphs
+- **CLI tools**: Complete command-line interface for training and evaluation
+
+## Paper
+
+For the research behind this implementation, see:
+> **Precise Legal Sentence Boundary Detection for Retrieval at Scale: NUPunkt and CharBoundary**  
+> Michael J Bommarito, Daniel Martin Katz, Jillian Bommarito  
+> arXiv:2504.04131 [cs.CL]  
+> https://arxiv.org/abs/2504.04131
+
+Interactive demo available at: https://sentences.aleainstitute.ai/
 
 ## Installation
 
@@ -33,118 +45,129 @@ text = """
 Employee also specifically and forever releases the Acme Inc. (Company) and the Company Parties (except where and 
 to the extent that such a release is expressly prohibited or made void by law) from any claims based on unlawful 
 employment discrimination or harassment, including, but not limited to, the Federal Age Discrimination in 
-Employment Act (29 U.S.C. § 621 et. seq.). This release does not include Employee’s right to indemnification, 
-and related insurance coverage, under Sec. 7.1.4 or Ex. 1-1 of the Employment Agreement, his right to equity awards,
-or continued exercise, pursuant to the terms of any specific equity award (or similar) agreement between 
-Employee and the Company nor to Employee’s right to benefits under any Company plan or program in which
-Employee participated and is due a benefit in accordance with the terms of the plan or program as of the Effective
-Date and ending at 11:59 p.m. Eastern Time on Sep. 15, 2013.
+Employment Act (29 U.S.C. § 621 et. seq.). This release does not include Employee's right to indemnification, 
+and related insurance coverage, under Sec. 7.1.4 or Ex. 1-1 of the Employment Agreement.
 """
 
 # Tokenize into sentences
 sentences = sent_tokenize(text)
 
-# Print the results
 for i, sentence in enumerate(sentences, 1):
     print(f"Sentence {i}: {sentence}\n")
 ```
 
-Output:
-```
-Sentence 1:
-Employee also specifically and forever releases the Acme Inc. (Company) and the Company Parties (except where and
-to the extent that such a release is expressly prohibited or made void by law) from any claims based on unlawful
-employment discrimination or harassment, including, but not limited to, the Federal Age Discrimination in
-Employment Act (29 U.S.C. § 621 et. seq.).
+## Adaptive Tokenization (New in v0.6.0)
 
-Sentence 2:  This release does not include Employee’s right to indemnification,
-and related insurance coverage, under Sec. 7.1.4 or Ex. 1-1 of the Employment Agreement, his right to equity awards,
-or continued exercise, pursuant to the terms of any specific equity award (or similar) agreement between
-Employee and the Company nor to Employee’s right to benefits under any Company plan or program in which
-Employee participated and is due a benefit in accordance with the terms of the plan or program as of the Effective
-Date and ending at 11:59 p.m. Eastern Time on Sep. 15, 2013.
-```
-
-## Documentation
-
-For more detailed documentation, see the [docs](./docs) directory:
-
-- [Overview](./docs/overview.md)
-- [Getting Started](./docs/getting_started.md)
-- [API Reference](./docs/api_reference.md)
-- [Architecture](./docs/architecture.md)
-- [Training Models](./docs/training_models.md)
-- [Advanced Usage](./docs/advanced_usage.md)
-
-## Command-line Tools
-
-nupunkt comes with several utility scripts for working with models:
-
-- **check_abbreviation.py**: Check if a token is in the model's abbreviation list
-  ```bash
-  python -m scripts.utils.check_abbreviation "U.S." 
-  python -m scripts.utils.check_abbreviation --list   # List all abbreviations
-  python -m scripts.utils.check_abbreviation --count  # Count abbreviations
-  ```
-
-- **test_tokenizer.py**: Test the tokenizer on sample text
-- **model_info.py**: Display information about a model file
-
-See the [scripts/utils/README.md](./scripts/utils/README.md) for more details on available tools.
-
-## Advanced Example
+Adaptive mode dynamically discovers abbreviation patterns and improves sentence boundary detection:
 
 ```python
-from nupunkt import PunktTrainer, PunktSentenceTokenizer
+from nupunkt import sent_tokenize_adaptive
 
-# Train a new model on domain-specific text
-with open("legal_corpus.txt", "r", encoding="utf-8") as f:
-    legal_text = f.read()
+text = """Dr. Smith graduated from M.I.T. in 2020. She works at N.A.S.A. now.
+Her colleague Mr. Johnson has a Ph.D. from U.C.L.A. and collaborates with researchers
+at C.E.R.N. on quantum physics."""
 
-trainer = PunktTrainer(legal_text, verbose=True)
-params = trainer.get_params()
+# Use adaptive mode with abbreviation pattern detection
+sentences = sent_tokenize_adaptive(text)
 
-# Save the trained model
-trainer.save("legal_model.json")
+# Adjust confidence threshold (default: 0.7)
+sentences = sent_tokenize_adaptive(text, threshold=0.8)
 
-# Create a tokenizer with the trained parameters
-tokenizer = PunktSentenceTokenizer(params)
+# Get confidence scores for each decision
+sentences_with_scores = sent_tokenize_adaptive(text, return_confidence=True)
+for sentence, confidence in sentences_with_scores:
+    print(f"[{confidence:.2f}] {sentence}")
+```
 
-# Tokenize legal text
-legal_sample = "The court ruled in favor of the plaintiff. 28 U.S.C. § 1332 provides jurisdiction."
-sentences = tokenizer.tokenize(legal_sample)
+The adaptive tokenizer:
+- Automatically detects abbreviation patterns (M.I.T., Ph.D., etc.)
+- Uses context clues to make better decisions
+- Provides confidence scores for each boundary decision
+- Falls back to the robust base algorithm when uncertain
 
-for s in sentences:
-    print(s)
+## Paragraph Detection
+
+```python
+from nupunkt import para_tokenize, para_spans, para_spans_with_text
+
+# Get paragraph text
+paragraphs = para_tokenize(text)
+
+# Get paragraph spans (start, end positions)
+spans = para_spans(text)
+
+# Get both text and spans
+para_with_spans = para_spans_with_text(text)
+```
+
+## Command-line Interface
+
+### Basic usage
+```bash
+# Using Python directly
+echo "Hello world. How are you?" | python -c "import sys; from nupunkt import sent_tokenize; print('\n'.join(sent_tokenize(sys.stdin.read())))"
+
+# Or create a simple script
+python -c "from nupunkt import sent_tokenize; import sys; [print(s) for s in sent_tokenize(sys.stdin.read())]"
+```
+
+### Training models
+```bash
+# Train from text files
+nupunkt train corpus.txt --output model.bin
+
+# Train from HuggingFace datasets
+nupunkt train hf:alea-institute/kl3m-data-usc -o legal_model.bin
+
+# Memory-efficient training for large datasets
+nupunkt train huge_corpus.txt --batch-size 1000000 --min-type-freq 5
+```
+
+### Evaluating models
+```bash
+# Evaluate a model
+nupunkt evaluate test_data.jsonl -m my_model.bin
+
+# Compare multiple models
+nupunkt evaluate test_data.jsonl --compare --models baseline.bin custom.bin
+```
+
+### Model management
+```bash
+# Convert between formats
+nupunkt convert model.json model.bin
+
+# Get model information
+nupunkt info model.bin
+
+# Optimize hyperparameters
+nupunkt optimize-params train.jsonl test.jsonl -o best_model.bin
 ```
 
 ## Performance
 
-nupunkt is designed to be both accurate and efficient. It can process large volumes of text quickly, making it suitable for production NLP pipelines.
+nupunkt is designed for high-precision, high-throughput processing:
 
-### Highly Optimized
-
-The tokenizer has been extensively optimized for performance:
 - **Token caching** for common tokens
-- **Fast path processing** for texts without sentence boundaries (up to 1.4B chars/sec)
+- **Fast path processing** for texts without sentence boundaries
 - **Pre-computed properties** to avoid repeated calculations
-- **Efficient character processing** and string handling in hot spots
+- **Efficient character processing** in hot spots
 
-### Example Legal Domain Benchmark
+Example benchmark on legal text:
 ```
-Performance Results:
-  Documents processed:      1
-  Total characters:         16,567,769
-  Total sentences found:    16,095
-  Processing time:          0.49 seconds
-  Processing speed:         33,927,693 characters/second
-  Average sentence length:  1029.4 characters
+Documents processed:      1
+Total characters:         16,567,769
+Total sentences found:    16,095
+Processing time:          0.49 seconds
+Processing speed:         33,927,693 characters/second
 ```
 
-### Specialized Use Cases
-- Normal text processing: ~31M characters/second
-- Text without sentence boundaries: ~1.4B characters/second 
-- Short text fragments: Extremely fast with early exit paths
+## Documentation
+
+- [Getting Started Guide](docs/getting-started.md) - Detailed usage examples
+- [Training Guide](docs/training-guide.md) - Train custom models
+- [Algorithm Overview](docs/algorithm.md) - How nupunkt works
+- [API Reference](docs/api-reference.md) - Complete API documentation
 
 ## Contributing
 
@@ -153,6 +176,19 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Citation
+
+If you use nupunkt in your research, please cite:
+
+```bibtex
+@article{bommarito2025precise,
+  title={Precise Legal Sentence Boundary Detection for Retrieval at Scale: NUPunkt and CharBoundary},
+  author={Bommarito, Michael J and Katz, Daniel Martin and Bommarito, Jillian},
+  journal={arXiv preprint arXiv:2504.04131},
+  year={2025}
+}
+```
 
 ## Acknowledgments
 

@@ -152,7 +152,11 @@ class PunktTrainer(PunktBase):
         return self._params
 
     def train(
-        self, text: str, verbose: bool = False, finalize: bool = True, preserve_abbrevs: bool = None
+        self,
+        text: str,
+        verbose: bool = False,
+        finalize: bool = True,
+        preserve_abbrevs: bool | None = None,
     ) -> None:
         """
         Train the model on the given text.
@@ -1028,6 +1032,19 @@ class PunktTrainer(PunktBase):
             if ll >= self.SENT_STARTER and (total / self._sentbreak_count > typ_count / count):
                 yield typ, ll
 
+    def _get_version(self) -> str:
+        """Get the model format version."""
+        return "1.0.0"
+
+    def _get_nupunkt_version(self) -> str:
+        """Get the nupunkt library version used to create this model."""
+        try:
+            from nupunkt._version import __version__
+
+            return __version__
+        except ImportError:
+            return "unknown"
+
     def to_json(self) -> Dict[str, Any]:
         """
         Convert trainer configuration and parameters to a JSON-serializable dictionary.
@@ -1060,8 +1077,9 @@ class PunktTrainer(PunktBase):
             # Current parameters (trained model)
             "parameters": self._params.to_json(),
             # Metadata
-            "version": "0.3.0",
+            "version": self._get_version(),
             "description": "nupunkt sentence tokenizer model",
+            "nupunkt_version": self._get_nupunkt_version(),
         }
         return config
 
@@ -1085,6 +1103,28 @@ class PunktTrainer(PunktBase):
         """
         # Create a new instance
         trainer = cls(lang_vars=lang_vars, token_cls=token_cls or PunktToken)
+
+        # Check model version compatibility
+        data.get("version", "0.3.0")  # Default to old version
+        nupunkt_version = data.get("nupunkt_version", "unknown")
+
+        # Emit warning if model was created with a different nupunkt version
+        if nupunkt_version != "unknown":
+            try:
+                from nupunkt._version import __version__ as current_version
+
+                if nupunkt_version != current_version:
+                    import warnings
+
+                    warnings.warn(
+                        f"Model was created with nupunkt {nupunkt_version}, "
+                        f"but current version is {current_version}. "
+                        f"This may cause compatibility issues.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+            except ImportError:
+                pass
 
         # Set configuration parameters
         trainer.ABBREV = data.get(cls.CONFIG_ABBREV, cls.ABBREV)

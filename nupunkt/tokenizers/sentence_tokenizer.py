@@ -103,9 +103,38 @@ class PunktSentenceTokenizer(PunktBase):
             i += 1
         return i < text_len and text[i].isupper()
 
+    def add_abbreviation(self, abbrev: str) -> None:
+        """Add a single abbreviation to the tokenizer.
+
+        Args:
+            abbrev: The abbreviation to add (with or without trailing period)
+        """
+        if abbrev.endswith("."):
+            abbrev = abbrev[:-1]
+        self._params.abbrev_types.add(abbrev.lower())
+
+    def add_abbreviations(self, abbrevs: List[str]) -> None:
+        """Add multiple abbreviations to the tokenizer.
+
+        Args:
+            abbrevs: List of abbreviations to add
+        """
+        for abbrev in abbrevs:
+            self.add_abbreviation(abbrev)
+
+    def remove_abbreviation(self, abbrev: str) -> None:
+        """Remove an abbreviation from the tokenizer.
+
+        Args:
+            abbrev: The abbreviation to remove
+        """
+        if abbrev.endswith("."):
+            abbrev = abbrev[:-1]
+        self._params.abbrev_types.discard(abbrev.lower())
+
     def __init__(
         self,
-        train_text: Any | None = None,
+        model_or_text: Any | None = None,
         verbose: bool = False,
         lang_vars: PunktLanguageVars | None = None,
         token_cls: Type[PunktToken] = PunktToken,
@@ -118,10 +147,13 @@ class PunktSentenceTokenizer(PunktBase):
         whitespace_cache_size: int = WHITESPACE_CACHE_SIZE,  # Size of the whitespace index cache
     ) -> None:
         """
-        Initialize the tokenizer, optionally with training text or parameters.
+        Initialize the tokenizer with a model, training text, or parameters.
 
         Args:
-            train_text: Training text or pre-trained parameters
+            model_or_text: Can be:
+                - None: Initialize with empty parameters
+                - str: Either training text or a path to a model file
+                - PunktParameters: Pre-trained parameters to use
             verbose: Whether to show verbose training information
             lang_vars: Language-specific variables
             token_cls: The token class to use
@@ -140,25 +172,36 @@ class PunktSentenceTokenizer(PunktBase):
         self._paragraph_cache_size = paragraph_cache_size
         self._enable_paragraph_caching = enable_paragraph_caching
 
-        # If a training text (or pre-trained parameters) is provided,
-        # use it to set the parameters.
-        if train_text:
-            if isinstance(train_text, str):
-                trainer = PunktTrainer(
-                    train_text,
-                    verbose=verbose,
-                    lang_vars=self._lang_vars,
-                    token_cls=self._Token,
-                    include_common_abbrevs=include_common_abbrevs,
-                )
-                self._params = trainer.get_params()
+        # Handle different input types
+        if model_or_text:
+            if isinstance(model_or_text, str):
+                # Check if it's a file path
+                path = Path(model_or_text)
+                if path.is_file() and (
+                    path.suffix in (".bin", ".json", ".xz") or str(path).endswith(".json.xz")
+                ):
+                    # Load from file
+                    self._params = PunktParameters.load(path)
+                    if verbose:
+                        print(f"Loaded model from {path}")
+                else:
+                    # Treat as training text
+                    trainer = PunktTrainer(
+                        model_or_text,
+                        verbose=verbose,
+                        lang_vars=self._lang_vars,
+                        token_cls=self._Token,
+                        include_common_abbrevs=include_common_abbrevs,
+                    )
+                    self._params = trainer.get_params()
             else:
-                self._params = train_text
+                # Assume it's PunktParameters
+                self._params = model_or_text
 
         # Add common abbreviations if using an existing parameter set
         if (
             include_common_abbrevs
-            and not isinstance(train_text, str)
+            and not (isinstance(model_or_text, str) and not Path(model_or_text).is_file())
             and hasattr(PunktTrainer, "COMMON_ABBREVS")
         ):
             for abbr in PunktTrainer.COMMON_ABBREVS:
@@ -393,32 +436,60 @@ class PunktSentenceTokenizer(PunktBase):
 
         # Standard processing for period contexts
         for match in self._lang_vars.period_context_pattern.finditer(text):
+            # Skip periods that are part of spaced ellipsis (. . .)
+            match_pos = match.start()
+            # Check if this period is part of a spaced ellipsis pattern
+            # Look for pattern like "X . . . Y" where X and Y are not periods
+            if match_pos >= 2 and match_pos < text_len - 4:
+                # Check for ". . ." pattern - first period
+                if text[match_pos : match_pos + 4] == ". . ":
+                    continue
+                # Check for ". . ." pattern - middle period
+                if text[match_pos - 2 : match_pos + 2] == ". . ":
+                    continue
+                # Check for ". . ." pattern - last period
+                if text[match_pos - 4 : match_pos] == " . .":
+                    continue
+
             before_text = text[previous_slice.stop : match.start()]
             idx = self._get_last_whitespace_index(before_text)
             index_after_last_space = previous_slice.stop + idx + 1 if idx else previous_slice.start
             prev_word_slice = slice(index_after_last_space, match.start())
             if previous_match and previous_slice.stop <= prev_word_slice.start:
-                # Use string joining for efficient concatenation
-                context = "".join(
-                    [
-                        text[previous_slice.start : previous_slice.stop],
-                        previous_match.group(),
-                        previous_match.group("after_tok"),
-                    ]
-                )
+                # Build context including the next word for better sentence break detection
+                # Include the word before the period, the period match, and enough following text
+                end_pos = previous_match.end()
+                # Find the end of the next word after the match
+                next_word_end = end_pos
+                while next_word_end < text_len and text[next_word_end].isspace():
+                    next_word_end += 1
+                # Include the next word but stop at punctuation that could be a sentence end
+                while next_word_end < text_len and not text[next_word_end].isspace():
+                    # Stop if we hit another period, exclamation, or question mark
+                    if text[next_word_end] in ".!?":
+                        break
+                    next_word_end += 1
+
+                context = text[previous_slice.start : next_word_end]
                 matches.append((previous_match, context))
             previous_match = match
             previous_slice = prev_word_slice
 
         if previous_match:
-            # Use string joining for efficient concatenation
-            context = "".join(
-                [
-                    text[previous_slice.start : previous_slice.stop],
-                    previous_match.group(),
-                    previous_match.group("after_tok"),
-                ]
-            )
+            # Build context including the next word for better sentence break detection
+            end_pos = previous_match.end()
+            # Find the end of the next word after the match
+            next_word_end = end_pos
+            while next_word_end < text_len and text[next_word_end].isspace():
+                next_word_end += 1
+            # Include the next word but stop at punctuation that could be a sentence end
+            while next_word_end < text_len and not text[next_word_end].isspace():
+                # Stop if we hit another period, exclamation, or question mark
+                if text[next_word_end] in ".!?":
+                    break
+                next_word_end += 1
+
+            context = text[previous_slice.start : next_word_end]
             matches.append((previous_match, context))
 
         # Yield all matches at once
@@ -449,7 +520,16 @@ class PunktSentenceTokenizer(PunktBase):
         for match, context in self._match_potential_end_contexts(text):
             if self.text_contains_sentbreak(context):
                 yield slice(last_break, match.end())
-                last_break = match.start("next_tok") if match.group("next_tok") else match.end()
+                # Skip whitespace when setting the next break position
+                if match.group("next_tok"):
+                    # next_tok already points to the non-whitespace character
+                    last_break = match.start("next_tok")
+                else:
+                    # No next_tok captured, need to skip whitespace manually
+                    pos = match.end()
+                    while pos < len(text) and text[pos].isspace():
+                        pos += 1
+                    last_break = pos
 
         # Final slice
         if last_break < text_end:

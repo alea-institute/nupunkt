@@ -5,18 +5,18 @@ This module provides utility functions for iterating through sequences
 with specialized behaviors needed for the Punkt algorithm.
 """
 
-from typing import Any, Iterator, Sequence, Tuple, TypeVar
+from typing import Any, Iterable, Iterator, Sequence, Tuple, TypeVar
 
 T = TypeVar("T")
 
 
-def pair_iter(iterable: Iterator[Any]) -> Iterator[Tuple[Any, Any | None]]:
+def pair_iter(iterable: Iterable[Any]) -> Iterator[Tuple[Any, Any | None]]:
     """
     Iterate through pairs of items from an iterable, where the second item
     can be None for the last item.
 
     Args:
-        iterable: The input iterator
+        iterable: The input iterable (list, tuple, or any iterable)
 
     Yields:
         Pairs of (current_item, next_item) where next_item is None for the last item

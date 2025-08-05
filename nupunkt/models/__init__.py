@@ -21,24 +21,30 @@ def get_default_model_path() -> Path:
     Get the path to the default pre-trained model.
 
     The function searches for models in priority order:
-    1. Binary format (.bin)
+    1. Gzipped JSON (.json.gz)
     2. Compressed JSON (.json.xz)
-    3. Uncompressed JSON (.json)
+    3. Binary format (.bin)
+    4. Uncompressed JSON (.json)
 
     Returns:
         Path: The path to the default model file
     """
     base_dir = Path(__file__).parent
 
-    # Check for binary model first (most efficient format)
+    # Check for gzipped JSON first (best balance of size and features)
+    gz_path = base_dir / "default_model.json.gz"
+    if gz_path.exists():
+        return gz_path
+
+    # Check for xz compressed model next
+    xz_path = base_dir / "default_model.json.xz"
+    if xz_path.exists():
+        return xz_path
+
+    # Check for binary model (legacy format)
     binary_path = base_dir / "default_model.bin"
     if binary_path.exists():
         return binary_path
-
-    # Check for compressed model next
-    compressed_path = base_dir / "default_model.json.xz"
-    if compressed_path.exists():
-        return compressed_path
 
     # Fall back to uncompressed model
     return base_dir / "default_model.json"

@@ -40,20 +40,31 @@ dependencies = []
 "Bug Tracker" = "https://github.com/alea-institute/nupunkt/issues"
 "Changelog" = "https://github.com/alea-institute/nupunkt/blob/main/CHANGELOG.md"
 
+[project.scripts]
+nupunkt = "nupunkt.cli:main"
+
+# Development dependencies are pinned for reproducible environments.
+# Update these versions intentionally when needed.
 [project.optional-dependencies]
 dev = [
-    "tqdm>=4.65.0",
-    "pytest>=8.0.0",
-    "mypy>=1.0.0",
-    "ruff>=0.0.280",
-    "black>=23.0.0",
-    "pytest-benchmark>=5.1.0",
-    "pytest-cov>=6.0.0",
+    "tqdm==4.66.1",
+    "pytest==8.3.2",
+    "mypy==1.11.2",
+    "ruff==0.6.5",
+    "black==24.8.0",
+    "pytest-benchmark==5.1.0",
+    "pytest-cov==6.0.0",
+    "memory-profiler>=0.61.0",
+    "psutil>=7.0.0",
 ]
 docs = [
-    "sphinx>=6.0.0",
-    "sphinx-rtd-theme>=1.0.0",
-    "myst-parser>=2.0.0",
+    "sphinx==7.3.7",
+    "sphinx-rtd-theme==2.0.0",
+    "myst-parser==4.0.0",
+]
+training = [
+    "tokenizers>=0.21.0",
+    "datasets>=2.19.0",
 ]
 
 [build-system]
@@ -64,17 +75,22 @@ build-backend = "setuptools.build_meta"
 packages = [
     "nupunkt",
     "nupunkt.core",
+    "nupunkt.evaluation",
+    "nupunkt.hybrid",
+    "nupunkt.models",
+    "nupunkt.optimization",
     "nupunkt.tokenizers",
     "nupunkt.trainers",
+    "nupunkt.training",
     "nupunkt.utils",
-    "nupunkt.models"
+    "nupunkt.workflows"
 ]
 
 [tool.setuptools.package-data]
-"nupunkt.models" = ["*.json", "*.json.xz", "*.bin"]
+"nupunkt.models" = ["*.json.gz"]
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py311"
 line-length = 100
 
 # Enable linters in this section
@@ -123,10 +139,3 @@ target-version = ["py311"]
 testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "-v"
-
-[dependency-groups]
-dev = [
-    "memory-profiler>=0.61.0",
-    "psutil>=7.0.0",
-    "pytest-benchmark>=5.1.0",
-]

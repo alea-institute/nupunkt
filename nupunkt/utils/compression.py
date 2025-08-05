@@ -61,7 +61,7 @@ def save_compressed_json(
 
 def load_compressed_json(file_path: Union[str, Path], encoding: str = "utf-8") -> Dict[str, Any]:
     """
-    Load data from a JSON file, which may be compressed with LZMA.
+    Load data from a JSON file, which may be compressed with gzip or LZMA.
 
     Args:
         file_path: The path to the file
@@ -81,28 +81,20 @@ def load_compressed_json(file_path: Union[str, Path], encoding: str = "utf-8") -
     if isinstance(file_path, Path):
         file_path = str(file_path)
 
-    try:
-        # Try loading as compressed file
-        if file_path.endswith(".xz"):
-            with lzma.open(file_path, "rt", encoding=encoding) as f:
-                xz_json_data: Dict[str, Any] = json.loads(f.read())
-                return xz_json_data
-        else:
-            # Try to detect if it's a compressed file without the extension
-            try:
-                with lzma.open(file_path, "rt", encoding=encoding) as f:
-                    detected_xz_data: Dict[str, Any] = json.loads(f.read())
-                    return detected_xz_data
-            except (lzma.LZMAError, json.JSONDecodeError):
-                # Not a compressed file, load as regular JSON
-                with Path(file_path).open(encoding=encoding) as f:
-                    regular_json_data: Dict[str, Any] = json.load(f)
-                    return regular_json_data
-    except Exception:
-        # As a fallback, try regular JSON
-        with Path(file_path).open(encoding=encoding) as f:
-            fallback_json_data: Dict[str, Any] = json.load(f)
-            return fallback_json_data
+    # Handle gzip compressed files
+    if file_path.endswith(".gz"):
+        with gzip.open(file_path, "rt", encoding=encoding) as f:
+            return json.load(f)
+
+    # Handle xz compressed files
+    elif file_path.endswith(".xz"):
+        with lzma.open(file_path, "rt", encoding=encoding) as f:
+            return json.load(f)
+
+    # Handle uncompressed JSON
+    else:
+        with open(file_path, encoding=encoding) as f:
+            return json.load(f)
 
 
 def save_binary_model(
@@ -114,11 +106,13 @@ def save_binary_model(
     """
     Save data in an optimized binary format with various compression options.
 
-    Binary format structure:
+    Binary format structure (v2):
     - 4 bytes: Magic bytes "NPKT"
-    - 1 byte: Format version
+    - 1 byte: Format version (2)
     - 1 byte: Compression method (0=none, 1=zlib, 2=lzma, 3=gzip)
-    - 4 bytes: Original data size (uncompressed)
+    - 4 bytes: Metadata size (compressed)
+    - [metadata as compressed JSON]
+    - 4 bytes: Parameters data size (uncompressed)
     - 4 bytes: Number of abbreviations
     - [abbreviations data]
     - 4 bytes: Number of collocations
