@@ -2,6 +2,8 @@
 
 A high-precision, high-throughput sentence boundary detection library optimized for legal text processing, with zero runtime dependencies.
 
+> **Note on Performance**: Version 0.6.0+ includes adaptive tokenization features that add slight overhead compared to v0.5.1 and earlier. While 0.6.0+ is marginally slower, it remains faster than comparable methods and provides user-configurable precision/recall control through the threshold parameter (e.g., `sent_tokenize_adaptive(text, threshold=0.1)` for more conservative sentence splitting).
+
 [![PyPI version](https://badge.fury.io/py/nupunkt.svg)](https://badge.fury.io/py/nupunkt)
 [![Python Version](https://img.shields.io/pypi/pyversions/nupunkt.svg)](https://pypi.org/project/nupunkt/)
 [![License](https://img.shields.io/github/license/alea-institute/nupunkt.svg)](https://github.com/alea-institute/nupunkt/blob/main/LICENSE)
