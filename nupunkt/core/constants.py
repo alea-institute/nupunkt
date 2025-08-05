@@ -41,25 +41,25 @@ ORTHO_MAP: Dict[Tuple[str, str], int] = {
 # These can be adjusted based on memory constraints and desired performance
 
 # Cache size for abbreviation checks - moderate size as number of abbreviations is usually limited
-ABBREV_CACHE_SIZE = 4096  # Power of 2 (2^12)
+ABBREV_CACHE_SIZE = 32768  # Power of 2 (2^15) - Increased 8x from 4096
 
 # Cache size for token creation and property caching - larger as token variety is high
-TOKEN_CACHE_SIZE = 32768  # Power of 2 (2^15) - critical for performance
+TOKEN_CACHE_SIZE = 262144  # Power of 2 (2^18) - critical for performance - Increased 8x from 32768
 
 # Cache size for orthographic heuristics - frequently used so needs to be large
-ORTHO_CACHE_SIZE = 8192  # Power of 2 (2^13)
+ORTHO_CACHE_SIZE = 65536  # Power of 2 (2^16) - Increased 8x from 8192
 
 # Cache size for sentence starter checks - less variety than tokens
-SENT_STARTER_CACHE_SIZE = 4096  # Power of 2 (2^12)
+SENT_STARTER_CACHE_SIZE = 32768  # Power of 2 (2^15) - Increased 8x from 4096
 
 # Cache size for token type calculations - moderate variety
-TOKEN_TYPE_CACHE_SIZE = 16384  # Power of 2 (2^14)
+TOKEN_TYPE_CACHE_SIZE = 131072  # Power of 2 (2^17) - Increased 8x from 16384
 
 # Cache size for document-level tokenization results - benchmarks showed this is critical
-DOC_TOKENIZE_CACHE_SIZE = 8192  # Power of 2 (2^13)
+DOC_TOKENIZE_CACHE_SIZE = 65536  # Power of 2 (2^16) - Increased 8x from 8192
 
 # Cache size for paragraph-level caching in tokenizer - moderate usage
-PARA_TOKENIZE_CACHE_SIZE = 8192  # Power of 2 (2^13)
+PARA_TOKENIZE_CACHE_SIZE = 65536  # Power of 2 (2^16) - Increased 8x from 8192
 
 # Cache size for whitespace index lookups - pattern is less varied
-WHITESPACE_CACHE_SIZE = 2048  # Power of 2 (2^11)
+WHITESPACE_CACHE_SIZE = 16384  # Power of 2 (2^14) - Increased 8x from 2048

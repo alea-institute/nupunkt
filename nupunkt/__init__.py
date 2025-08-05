@@ -29,7 +29,7 @@ from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 from nupunkt.trainers.base_trainer import PunktTrainer
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=64)  # Increased 8x from 8
 def load(model: str) -> PunktSentenceTokenizer:
     """
     Load a Punkt model by name or path.
@@ -85,19 +85,19 @@ def load(model: str) -> PunktSentenceTokenizer:
 
 
 # Backward compatibility - keep the old internal functions
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)  # Increased 8x from 1
 def _get_default_model():
     """Get the default model, loading it only once."""
     return load("default")
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)  # Increased 8x from 1
 def _get_paragraph_tokenizer():
     """Get the paragraph tokenizer with the default model, loading it only once."""
     return PunktParagraphTokenizer(_get_default_model())
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=64)  # Increased 8x from 8
 def _get_adaptive_tokenizer(
     model: str, confidence_threshold: float, enable_dynamic_abbrev: bool
 ) -> Any:  # Returns AdaptiveTokenizer but avoid import at module level

@@ -11,6 +11,22 @@ from nupunkt import (
 )
 
 
+@pytest.fixture(autouse=True)
+def clear_token_cache():
+    """Clear the module-level token cache before each test to prevent cross-test pollution."""
+    # Import here to avoid circular imports
+    from nupunkt.core.tokens import _token_instance_cache
+    
+    # Clear the cache before the test
+    _token_instance_cache.clear()
+    
+    # Run the test
+    yield
+    
+    # Optionally clear after as well (not strictly necessary)
+    _token_instance_cache.clear()
+
+
 @pytest.fixture
 def sample_text() -> str:
     """Return a sample text for testing."""

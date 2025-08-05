@@ -18,19 +18,14 @@ Example:
     # Returns: ["Dr. Smith studied at M.I.T. in Cambridge."]
 """
 
-# Original experimental tokenizer (not recommended)
-# Evaluation utilities
 # Adaptive tokenizer (recommended)
 from nupunkt.hybrid.adaptive_tokenizer import (
     AdaptiveTokenizer,
     BoundaryDecision,
     create_adaptive_tokenizer,
 )
-from nupunkt.hybrid.challenge_set import (
-    CHALLENGE_SET,
-    evaluate_tokenizer,
-    print_detailed_errors,
-)
+
+# Original experimental tokenizer (kept for compatibility)
 from nupunkt.hybrid.confidence_tokenizer import (
     DOMAIN_PRESETS,
     ConfidenceScore,
@@ -48,8 +43,4 @@ __all__ = [
     "ConfidenceScore",
     "create_domain_tokenizer",
     "DOMAIN_PRESETS",
-    # Evaluation utilities
-    "CHALLENGE_SET",
-    "evaluate_tokenizer",
-    "print_detailed_errors",
 ]

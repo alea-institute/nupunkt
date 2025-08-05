@@ -675,6 +675,31 @@ except TypeError as e:
 3. **Batch Processing**: Process multiple texts with same tokenizer
 4. **Memory**: Models use ~50-100MB RAM when loaded
 
+## Caching Behavior
+
+nupunkt uses several caching mechanisms for performance:
+
+1. **Module-level Token Cache**: Token instances are cached globally across all tokenizers. This improves performance but means different tokenizer instances share the same token cache.
+
+2. **LRU Function Caches**: Various string processing functions use LRU caches for repeated patterns.
+
+3. **Model Cache**: The `load()` function caches loaded models to avoid repeated file I/O.
+
+**⚠️ Warning**: If you use multiple tokenizer configurations with different abbreviation sets in the same process, the shared token cache may cause unexpected behavior. While tokens themselves only store text and basic properties, the interpretation of these tokens depends on each tokenizer's abbreviation list. 
+
+**Example of problematic usage:**
+```python
+# DON'T DO THIS - may cause issues
+tokenizer1 = PunktSentenceTokenizer()  # Has default abbreviations including "Dr"
+tokenizer2 = PunktSentenceTokenizer(custom_params)  # Does NOT have "Dr" as abbreviation
+
+# These may interfere with each other due to shared caching
+result1 = tokenizer1.tokenize("Dr. Smith arrived.")  
+result2 = tokenizer2.tokenize("Dr. Jones left.")
+```
+
+**Recommended approach**: Use consistent tokenizer configurations within a single process, or clear caches between different configurations if necessary.
+
 ## Thread Safety
 
 PunktSentenceTokenizer instances are thread-safe for reading (tokenization) but not for writing (adding/removing abbreviations).

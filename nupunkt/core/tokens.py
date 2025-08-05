@@ -21,7 +21,7 @@ _RE_NON_PUNCT = re.compile(r"[^\W\d]")
 
 # LRU-cached functions for token classification to improve performance
 # Use a smaller cache for common tokens only
-@lru_cache(maxsize=500)
+@lru_cache(maxsize=4000)  # Increased 8x from 500
 def _check_is_ellipsis(tok: str) -> bool:
     """
     Cached function to check if a token represents an ellipsis.
@@ -44,7 +44,7 @@ def _check_is_ellipsis(tok: str) -> bool:
     return bool(_RE_SPACED_ELLIPSIS.search(tok))
 
 
-@lru_cache(maxsize=500)
+@lru_cache(maxsize=4000)  # Increased 8x from 500
 def _check_is_initial(tok: str) -> bool:
     """
     Cached function to check if a token is an initial.
@@ -58,7 +58,7 @@ def _check_is_initial(tok: str) -> bool:
     return bool(_RE_INITIAL.fullmatch(tok))
 
 
-@lru_cache(maxsize=1000)
+@lru_cache(maxsize=8000)  # Increased 8x from 1000
 def _check_is_alpha(tok: str) -> bool:
     """
     Cached function to check if a token is alphabetic.
@@ -72,7 +72,7 @@ def _check_is_alpha(tok: str) -> bool:
     return bool(_RE_ALPHA.fullmatch(tok))
 
 
-@lru_cache(maxsize=1000)
+@lru_cache(maxsize=8000)  # Increased 8x from 1000
 def _check_is_non_punct(typ: str) -> bool:
     """
     Cached function to check if a token type contains non-punctuation.
@@ -86,7 +86,7 @@ def _check_is_non_punct(typ: str) -> bool:
     return bool(_RE_NON_PUNCT.search(typ))
 
 
-@lru_cache(maxsize=2000)  # Increased cache size for token types
+@lru_cache(maxsize=16000)  # Increased 8x from 2000
 def _get_token_type(tok: str) -> str:
     """
     Get the normalized type of a token (cached for better performance).
@@ -103,7 +103,7 @@ def _get_token_type(tok: str) -> str:
     return tok.lower()
 
 
-@lru_cache(maxsize=1000)
+@lru_cache(maxsize=8000)  # Increased 8x from 1000
 def _get_type_no_period(type_str: str) -> str:
     """Get the token type without a trailing period (cached)."""
     return type_str[:-1] if type_str.endswith(".") and len(type_str) > 1 else type_str
@@ -111,7 +111,10 @@ def _get_type_no_period(type_str: str) -> str:
 
 # Module-level cache for PunktToken instances
 _token_instance_cache: Dict[Tuple[str, bool, bool], "PunktToken"] = {}
-_TOKEN_CACHE_SIZE = 2000  # Increased from original 1000
+_TOKEN_CACHE_SIZE = 16000  # Increased 8x from 2000
+
+# Pre-created singletons for common punctuation
+_PUNCT_SINGLETONS: Dict[str, "PunktToken"] = {}
 
 
 def create_punkt_token(tok: str, parastart: bool = False, linestart: bool = False) -> "PunktToken":
@@ -126,6 +129,10 @@ def create_punkt_token(tok: str, parastart: bool = False, linestart: bool = Fals
     Returns:
         A new or cached PunktToken instance
     """
+    # Fast path for single-character punctuation (except period which needs analysis)
+    if len(tok) == 1 and tok in _PUNCT_SINGLETONS and not parastart and not linestart:
+        return _PUNCT_SINGLETONS[tok]
+    
     # Only cache smaller tokens (most common case)
     if len(tok) < 15:
         cache_key = (tok, parastart, linestart)
@@ -214,27 +221,29 @@ class PunktToken:
         self._is_alpha = None
         self._is_non_punct = None
 
-        # Fast check for invalid characters (non-alphanumeric and non-period)
+        # Single pass to check characters and count types
         has_invalid_char = False
-        for c in tok:
-            if c not in self._ALLOWED_CHARS:
-                has_invalid_char = True
-                break
-
-        if self.period_final and not has_invalid_char:
-            # For tokens with internal periods (like U.S.C), get non-period chars
-            # Use more efficient counting method
-            alpha_count = 0
-            digit_count = 0
+        alpha_count = 0
+        digit_count = 0
+        
+        if self.period_final:
+            # Single pass through the token to gather all info
             for c in tok:
-                if c != ".":
-                    if c.isalpha():
-                        alpha_count += 1
-                    elif c.isdigit():
-                        digit_count += 1
-
+                if c == ".":
+                    continue  # Skip periods
+                elif c.isalpha():
+                    alpha_count += 1
+                elif c.isdigit():
+                    digit_count += 1
+                elif c not in self._ALLOWED_CHARS:
+                    has_invalid_char = True
+                    # Don't break - we still need counts for valid_abbrev_candidate
+            
             self.valid_abbrev_candidate = (
-                self.type != "##number##" and alpha_count >= digit_count and alpha_count > 0
+                not has_invalid_char and 
+                self.type != "##number##" and 
+                alpha_count >= digit_count and 
+                alpha_count > 0
             )
         else:
             self.valid_abbrev_candidate = False
@@ -334,3 +343,8 @@ class PunktToken:
             f"linestart={self.linestart}, sentbreak={self.sentbreak}, "
             f"abbr={self.abbr}, ellipsis={self.ellipsis})"
         )
+
+
+# Initialize punctuation singletons (excluding period which needs special handling)
+for punct in ',;:()[]{}"\'-–—/\\':
+    _PUNCT_SINGLETONS[punct] = PunktToken(punct, False, False)
