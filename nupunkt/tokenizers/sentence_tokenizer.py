@@ -354,6 +354,44 @@ class PunktSentenceTokenizer(PunktBase):
         """
         return [text[start:stop] for start, stop in self.span_tokenize(text, realign_boundaries)]
 
+    def tokenize_with_spans(
+        self, text: str, realign_boundaries: bool = True
+    ) -> List[Tuple[str, Tuple[int, int]]]:
+        """
+        Tokenize text into sentences with their character spans.
+
+        Each span is a tuple of (start_idx, end_idx) where start_idx is inclusive
+        and end_idx is exclusive (following Python's slicing convention).
+        The spans are guaranteed to be contiguous, covering the entire input text without gaps.
+
+        Args:
+            text: The text to tokenize
+            realign_boundaries: Whether to realign sentence boundaries
+
+        Returns:
+            List of tuples containing (sentence, (start_index, end_index))
+        """
+        if not text:
+            return []
+
+        # Get the raw sentence spans
+        spans = list(self.span_tokenize(text, realign_boundaries))
+        if not spans:
+            return [(text, (0, len(text)))]
+
+        # Make spans contiguous by extending each span to the start of the next
+        result = []
+        for i, (start, _) in enumerate(spans):
+            if i < len(spans) - 1:
+                # Extend this span to the start of the next sentence
+                next_start = spans[i + 1][0]
+                result.append((text[start:next_start], (start, next_start)))
+            else:
+                # Last span extends to the end of text
+                result.append((text[start : len(text)], (start, len(text))))
+
+        return result
+
     @staticmethod
     @lru_cache(maxsize=WHITESPACE_CACHE_SIZE)
     def _cached_whitespace_index(text: str) -> int:

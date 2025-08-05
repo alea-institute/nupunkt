@@ -288,6 +288,55 @@ class TestIntegrationWithBase:
         assert improved_correct >= standard_correct
 
 
+class TestEdgeCases:
+    """Test edge cases with the pattern-based approach."""
+
+    def test_unknown_lowercase_abbreviations(self):
+        """Test that unknown lowercase abbreviations are handled correctly."""
+        tokenizer = AdaptiveTokenizer()
+
+        # These should split because they're not known abbreviations
+        test_cases = [
+            ("Use eg. this example.", 2),  # Not standard form
+            ("See pg. 5 for details.", 2),  # Unknown abbreviation
+            ("Contact xyz. department.", 2),  # Unknown abbreviation
+        ]
+
+        for text, expected_count in test_cases:
+            sentences = list(tokenizer.tokenize(text))
+            assert len(sentences) == expected_count, f"Failed for: {text}"
+
+    def test_known_lowercase_abbreviations(self):
+        """Test that known lowercase abbreviations work correctly."""
+        tokenizer = AdaptiveTokenizer()
+
+        # These should NOT split because they're known
+        test_cases = [
+            ("End with etc. next continues.", 1),  # Known abbrev + lowercase
+            ("Use e.g. this example.", 1),  # Known abbrev
+            ("Compare vs. that option.", 1),  # Known abbrev
+        ]
+
+        for text, expected_count in test_cases:
+            sentences = list(tokenizer.tokenize(text))
+            assert len(sentences) == expected_count, f"Failed for: {text}"
+
+    def test_uppercase_followed_by_known_starter(self):
+        """Test abbreviations followed by known sentence starters."""
+        tokenizer = AdaptiveTokenizer()
+
+        # Even known abbreviations should split when followed by strong sentence starters
+        test_cases = [
+            ("End with etc. The result is clear.", 2),  # Known starter
+            ("See etc. However, there's more.", 2),  # Known starter
+            ("Use etc. Therefore, we conclude.", 2),  # Known starter
+        ]
+
+        for text, expected_count in test_cases:
+            sentences = list(tokenizer.tokenize(text))
+            assert len(sentences) == expected_count, f"Failed for: {text}"
+
+
 if __name__ == "__main__":
     # Run basic tests
     test = TestAdaptiveTokenizer()

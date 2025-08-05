@@ -15,6 +15,32 @@ from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
 from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 
+# Confidence scoring weights for sentence boundary detection
+# These constants control how different features contribute to the confidence score
+
+# Base algorithm decision weights
+SCORE_BASE_DECISION_YES = 0.5  # Weight when base algorithm decides it's a boundary
+SCORE_BASE_DECISION_NO = 0.0  # Starting score when base says no boundary
+
+# Punctuation weights
+SCORE_STRONG_PUNCTUATION = 0.3  # Weight for ! or ? endings
+SCORE_QUOTE_ENDING = 0.2  # Weight for ." ?" !" endings
+
+# Abbreviation penalties
+SCORE_KNOWN_ABBREVIATION = -0.4  # Penalty for known abbreviations
+SCORE_LIKELY_ABBREVIATION = -0.3  # Penalty for likely abbreviations
+
+# Next token weights - when uppercase follows
+SCORE_SENTENCE_STARTER_FOLLOWS = 0.4  # Strong evidence for boundary
+SCORE_UPPERCASE_FOLLOWS = 0.2  # Moderate evidence for boundary
+
+# Next token weights - when lowercase follows
+SCORE_CONTINUATION_WORD_FOLLOWS = -0.3  # Strong evidence against boundary
+SCORE_LOWERCASE_FOLLOWS = -0.15  # Moderate evidence against boundary
+
+# Special pattern penalties
+SCORE_LIST_ITEM_PATTERN = -0.2  # Penalty for single digits/letters
+
 
 @dataclass
 class BoundaryDecision:
@@ -39,28 +65,16 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
     3. Preservation of base algorithm strengths
     """
 
-    # Common abbreviation patterns
+    # Generic abbreviation format templates
     ABBREV_PATTERNS = [
-        # Academic degrees
-        re.compile(r"^(B|M|Ph|J|D)\.[A-Z]\.?(\.[A-Z]\.?)*$", re.I),  # B.A., M.S., Ph.D., etc
-        # Organizations with dots
-        re.compile(r"^[A-Z](\.[A-Z])+\.?$"),  # U.S., M.I.T., etc
-        # Legal citations
-        re.compile(r"^[A-Z][a-z]*\.$"),  # Fed., Civ., etc
-        # Common titles (already in base, but for reference)
-        re.compile(r"^(Mr|Mrs|Ms|Dr|Prof|Rev|Sr|Jr|St)\.?$", re.I),
-        # Months
-        re.compile(r"^(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?$", re.I),
-        # Business suffixes
-        re.compile(r"^(Inc|Corp|Ltd|LLC|Co|Bros|Assoc)\.?$", re.I),
-        # Time
-        re.compile(r"^(a|p)\.m\.?$", re.I),
-        # Compass
-        re.compile(r"^(N|S|E|W|NE|NW|SE|SW)\.?$", re.I),
-        # Military/Government
-        re.compile(r"^(Gen|Col|Maj|Capt|Lt|Sgt|Cpl|Pvt)\.?$", re.I),
-        # Academic
-        re.compile(r"^(Univ|Dept|Prof|Assoc|Asst)\.?$", re.I),
+        # Pattern for multi-part abbreviations with dots (e.g., i.e., e.g., Ph.D.)
+        re.compile(r"^[a-z][a-z]*(\.[a-z][a-z]*)+\.?$", re.I),
+        # Pattern for capitalized single-word abbreviations (e.g., Fig., Vol.)
+        re.compile(r"^[A-Z][a-z]*\.$"),
+        # Pattern for lowercase single-word abbreviations (e.g., etc., vs.)
+        re.compile(r"^[a-z]{2,}\.$"),
+        # Pattern for all-caps acronyms with dots (e.g., U.S.A., M.I.T.)
+        re.compile(r"^[A-Z](\.[A-Z])+\.?$"),
     ]
 
     # Tokens that often follow abbreviations (not sentence starters)
@@ -156,6 +170,14 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
         for pattern in self.ABBREV_PATTERNS:
             if pattern.match(token.tok):
                 reasons.append(f"Matches pattern: {pattern.pattern}")
+
+                # For single-word lowercase abbreviations, check if it's known
+                if (
+                    pattern.pattern == r"^[a-z]{2,}\.$"
+                    and type_no_period.lower() not in self._params.abbrev_types
+                ):
+                    # Unknown lowercase abbreviation - likely NOT an abbreviation
+                    return False, ["Matches lowercase pattern but not in known abbreviations"]
                 break
 
         # Check token characteristics
@@ -200,51 +222,52 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
 
         # Start with base decision weight
         if base_decision:
-            score += 0.5
+            score += SCORE_BASE_DECISION_YES
             factors.append("Base algorithm: yes")
         else:
+            score = SCORE_BASE_DECISION_NO
             factors.append("Base algorithm: no")
 
         # Token ending analysis
         if token.tok.endswith("!") or token.tok.endswith("?"):
-            score += 0.3
+            score += SCORE_STRONG_PUNCTUATION
             factors.append("Strong punctuation")
         elif token.tok.endswith('."') or token.tok.endswith('?"') or token.tok.endswith('!"'):
-            score += 0.2
+            score += SCORE_QUOTE_ENDING
             factors.append("Quote ending")
 
         # Abbreviation analysis
         if token.abbr:
-            score -= 0.4
+            score += SCORE_KNOWN_ABBREVIATION
             factors.append("Known abbreviation")
         elif self.enable_dynamic_abbrev:
             is_likely_abbrev, abbrev_reasons = self._is_likely_abbreviation(token, next_token)
             if is_likely_abbrev:
-                score -= 0.3
+                score += SCORE_LIKELY_ABBREVIATION
                 factors.extend([f"Likely abbrev: {r}" for r in abbrev_reasons[:2]])
 
         # Next token analysis
         if next_token:
             if next_token.first_upper:
                 if next_token.type_no_period.lower() in self._params.sent_starters:
-                    score += 0.2
+                    score += SCORE_SENTENCE_STARTER_FOLLOWS
                     factors.append("Known sentence starter follows")
                 else:
-                    score += 0.1
+                    score += SCORE_UPPERCASE_FOLLOWS
                     factors.append("Uppercase follows")
             elif next_token.first_lower:
                 if next_token.tok.lower() in self.CONTINUATION_WORDS:
-                    score -= 0.2
+                    score += SCORE_CONTINUATION_WORD_FOLLOWS
                     factors.append("Continuation word follows")
                 else:
-                    score -= 0.1
+                    score += SCORE_LOWERCASE_FOLLOWS
                     factors.append("Lowercase follows")
 
         # Special patterns
         if token.type_no_period.isdigit() or (
             len(token.type_no_period) == 1 and token.type_no_period.isalpha()
         ):
-            score -= 0.2
+            score += SCORE_LIST_ITEM_PATTERN
             factors.append("List item pattern")
 
         # Normalize to [0, 1]

@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 
 # Import for type annotations
-from typing import Any, List, Tuple, Union
+from typing import Any, List, Literal, Tuple, Union, overload
 
 from nupunkt._version import __version__
 from nupunkt.core.language_vars import PunktLanguageVars
@@ -255,6 +255,44 @@ def para_tokenize(text: str) -> List[str]:
     return list(paragraph_tokenizer.tokenize(text))
 
 
+# Function for getting sentence spans
+def sent_spans(text: str) -> List[Tuple[int, int]]:
+    """
+    Get sentence spans (start, end character positions) using the default pre-trained model.
+
+    This is a convenience function for getting sentence spans without having
+    to explicitly load a model. The spans are guaranteed to be contiguous,
+    covering the entire input text without gaps.
+
+    Args:
+        text: The text to segment
+
+    Returns:
+        A list of sentence spans as (start_index, end_index) tuples
+    """
+    tokenizer = _get_default_model()
+    return [span for _, span in tokenizer.tokenize_with_spans(text)]
+
+
+# Function for getting sentence spans with text
+def sent_spans_with_text(text: str) -> List[Tuple[str, Tuple[int, int]]]:
+    """
+    Get sentences with their spans using the default pre-trained model.
+
+    This is a convenience function for getting sentences with their character spans
+    without having to explicitly load a model. The spans are guaranteed to be
+    contiguous, covering the entire input text without gaps.
+
+    Args:
+        text: The text to segment
+
+    Returns:
+        A list of tuples containing (sentence, (start_index, end_index))
+    """
+    tokenizer = _get_default_model()
+    return tokenizer.tokenize_with_spans(text)
+
+
 # Function for getting paragraph spans
 def para_spans(text: str) -> List[Tuple[int, int]]:
     """
@@ -293,6 +331,145 @@ def para_spans_with_text(text: str) -> List[Tuple[str, Tuple[int, int]]]:
     return list(paragraph_tokenizer.tokenize_with_spans(text))
 
 
+# Function for getting sentence spans with adaptive tokenization
+def sent_spans_adaptive(
+    text: str,
+    threshold: float = 0.7,
+    model: str = "default",
+    dynamic_abbrev: bool = True,
+    **kwargs,
+) -> List[Tuple[int, int]]:
+    """
+    Get sentence spans using adaptive tokenization with confidence scoring.
+
+    This function provides character-level sentence boundary detection using
+    the adaptive algorithm that dynamically recognizes abbreviation patterns.
+
+    Args:
+        text: The text to segment
+        threshold: Confidence threshold (0.0-1.0)
+        model: Model to use - "default", a file path, or a model name
+        dynamic_abbrev: Discover abbreviation patterns at runtime
+        **kwargs: Additional arguments passed to the tokenizer
+
+    Returns:
+        A list of sentence spans as (start_index, end_index) tuples
+
+    Examples:
+        >>> # Get spans for text with unknown abbreviations
+        >>> spans = sent_spans_adaptive("She studied at M.I.T. in Cambridge.")
+        >>> [(0, 35)]  # Single sentence preserved
+
+        >>> # Tune for high precision
+        >>> spans = sent_spans_adaptive(legal_text, threshold=0.85)
+    """
+    # Get cached tokenizer
+    tokenizer = _get_adaptive_tokenizer(
+        model=model,
+        confidence_threshold=threshold,
+        enable_dynamic_abbrev=dynamic_abbrev,
+    )
+    return [span for _, span in tokenizer.tokenize_with_spans(text)]
+
+
+# Function for getting sentence spans with text using adaptive tokenization
+@overload
+def sent_spans_with_text_adaptive(
+    text: str,
+    threshold: float = 0.7,
+    model: str = "default",
+    dynamic_abbrev: bool = True,
+    return_confidence: Literal[False] = False,
+    **kwargs,
+) -> List[Tuple[str, Tuple[int, int]]]:
+    ...
+
+
+@overload
+def sent_spans_with_text_adaptive(
+    text: str,
+    threshold: float = 0.7,
+    model: str = "default",
+    dynamic_abbrev: bool = True,
+    return_confidence: Literal[True] = True,
+    **kwargs,
+) -> List[Tuple[str, Tuple[int, int], float]]:
+    ...
+
+
+def sent_spans_with_text_adaptive(
+    text: str,
+    threshold: float = 0.7,
+    model: str = "default",
+    dynamic_abbrev: bool = True,
+    return_confidence: bool = False,
+    **kwargs,
+) -> Union[List[Tuple[str, Tuple[int, int]]], List[Tuple[str, Tuple[int, int], float]]]:
+    """
+    Get sentences with their spans using adaptive tokenization.
+
+    This function provides both the sentence text and character positions using
+    the adaptive algorithm. Optionally includes confidence scores.
+
+    Args:
+        text: The text to segment
+        threshold: Confidence threshold (0.0-1.0)
+        model: Model to use - "default", a file path, or a model name
+        dynamic_abbrev: Discover abbreviation patterns at runtime
+        return_confidence: Include confidence scores in the output
+        **kwargs: Additional arguments passed to the tokenizer
+
+    Returns:
+        If return_confidence is False:
+            List of (sentence, (start_index, end_index)) tuples
+        If return_confidence is True:
+            List of (sentence, (start_index, end_index), confidence) tuples
+
+    Examples:
+        >>> # Get sentences with spans
+        >>> results = sent_spans_with_text_adaptive("Dr. Smith studied at M.I.T. today.")
+        >>> [('Dr. Smith studied at M.I.T. today.', (0, 34))]
+
+        >>> # With confidence scores
+        >>> results = sent_spans_with_text_adaptive(text, return_confidence=True)
+        >>> [('First sentence.', (0, 15), 0.92), ('Second one.', (15, 26), 0.88)]
+    """
+    # Get cached tokenizer
+    tokenizer = _get_adaptive_tokenizer(
+        model=model,
+        confidence_threshold=threshold,
+        enable_dynamic_abbrev=dynamic_abbrev,
+    )
+
+    if return_confidence:
+        # Get sentences with confidence scores
+        sentences_with_conf = tokenizer.tokenize_with_confidence(text)
+
+        # Get spans
+        spans_with_text = tokenizer.tokenize_with_spans(text)
+
+        # Combine confidence scores with spans
+        results = []
+        for (sent_conf, conf), (sent_span, span) in zip(sentences_with_conf, spans_with_text):
+            # Verify sentences match (they should)
+            if sent_conf.strip() != sent_span.strip():
+                # Handle potential whitespace differences
+                conf_idx = next(
+                    (
+                        i
+                        for i, (s, _) in enumerate(sentences_with_conf)
+                        if sent_span.strip() == s.strip()
+                    ),
+                    None,
+                )
+                if conf_idx is not None:
+                    conf = sentences_with_conf[conf_idx][1]
+            results.append((sent_span, span, conf))
+        return results
+    else:
+        return tokenizer.tokenize_with_spans(text)
+
+
 __all__ = [
     "__version__",
     "PunktParameters",
@@ -305,6 +482,10 @@ __all__ = [
     "load_default_model",
     "sent_tokenize",
     "sent_tokenize_adaptive",
+    "sent_spans",
+    "sent_spans_with_text",
+    "sent_spans_adaptive",
+    "sent_spans_with_text_adaptive",
     "para_tokenize",
     "para_spans",
     "para_spans_with_text",

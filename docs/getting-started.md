@@ -134,6 +134,63 @@ print("Result:", sentences)
 # Result: ['Visit I.B.M. today.']
 ```
 
+## Getting Sentence Spans
+
+Sometimes you need to know the exact position of sentences in the original text:
+
+### Basic Sentence Spans
+
+```python
+from nupunkt import sent_spans, sent_spans_with_text
+
+text = "First sentence. Second sentence. Third one."
+
+# Just the spans
+spans = sent_spans(text)
+print("Spans:", spans)
+# Spans: [(0, 16), (16, 33), (33, 43)]
+
+# Spans with text
+spans_with_text = sent_spans_with_text(text)
+for sentence, (start, end) in spans_with_text:
+    print(f"[{start}:{end}] {repr(sentence)}")
+    assert text[start:end] == sentence  # Always true
+# [0:16] 'First sentence. '
+# [16:33] 'Second sentence. '
+# [33:43] 'Third one.'
+```
+
+### Adaptive Sentence Spans
+
+For better handling of abbreviations, use the adaptive span functions:
+
+```python
+from nupunkt import sent_spans_adaptive, sent_spans_with_text_adaptive
+
+text = "Dr. Smith studied at M.I.T. in Cambridge. She graduated in 2020."
+
+# Standard spans might split incorrectly
+standard_spans = sent_spans(text)
+print(f"Standard: {len(standard_spans)} spans")
+
+# Adaptive spans handle abbreviations better
+adaptive_spans = sent_spans_adaptive(text)
+print(f"Adaptive: {len(adaptive_spans)} spans")
+# Adaptive: 2 spans
+
+# With confidence scores
+results = sent_spans_with_text_adaptive(text, return_confidence=True)
+for sentence, (start, end), confidence in results:
+    print(f"[{confidence:.2f}] [{start}:{end}] {sentence}")
+# [0.30] [0:42] Dr. Smith studied at M.I.T. in Cambridge. 
+# [0.90] [42:64] She graduated in 2020.
+```
+
+All span functions guarantee:
+- Contiguous spans with no gaps
+- Full coverage of the input text
+- Preservation of all whitespace
+
 ## Paragraph Tokenization
 
 nupunkt can also split text into paragraphs based on sentence boundaries and newlines:

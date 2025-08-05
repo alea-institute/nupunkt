@@ -123,7 +123,7 @@ class TestSentTokenizeAdaptive:
         assert sent_tokenize("", adaptive=True, return_confidence=True) == []
 
 
-class TestSentTokenizeAdaptive:
+class TestSentTokenizeAdaptiveFunction:
     """Test the sent_tokenize_adaptive convenience function."""
 
     def test_basic_functionality(self):
@@ -287,13 +287,91 @@ class TestPerformance:
         assert len(result) == 1
 
 
+class TestAdaptiveModeWithSpans:
+    """Test adaptive mode functionality with span tracking."""
+
+    def test_adaptive_span_tracking(self):
+        """Test that adaptive mode preserves span tracking correctly."""
+        text = "She studied at M.I.T. in Cambridge. Then moved to N.Y.C. for work."
+
+        # Get spans from adaptive tokenizer
+        adaptive_results = sent_tokenize(text, adaptive=True, return_confidence=True)
+
+        # Verify we have two sentences (adaptive should handle abbreviations)
+        assert len(adaptive_results) == 2
+
+        # Extract just the sentences
+        sentences = [sent for sent, _ in adaptive_results]
+        assert sentences[0] == "She studied at M.I.T. in Cambridge."
+        assert sentences[1] == "Then moved to N.Y.C. for work."
+
+    def test_adaptive_with_dynamic_patterns(self):
+        """Test adaptive mode with dynamic pattern recognition."""
+        text = "Dr. Smith has a Ph.D. from U.C.L.A. and works at I.B.M. now."
+
+        # Test with dynamic abbreviation discovery enabled
+        results = sent_tokenize(text, adaptive=True, dynamic_abbrev=True)
+        assert len(results) == 1
+        assert results[0] == text
+
+    def test_adaptive_confidence_thresholds_affect_spans(self):
+        """Test that different confidence thresholds affect span detection."""
+        text = "Short. Very short. Another."
+
+        # Lower threshold - might be more aggressive about breaks
+        low_threshold = sent_tokenize(text, adaptive=True, confidence_threshold=0.3)
+
+        # Higher threshold - might be more conservative
+        high_threshold = sent_tokenize(text, adaptive=True, confidence_threshold=0.9)
+
+        # Check that we get valid tokenization (exact behavior may vary based on the model)
+        assert len(low_threshold) >= 2
+        assert len(high_threshold) >= 2
+
+        # Verify all text is included
+        assert "Short." in " ".join(low_threshold)
+        assert "Another." in " ".join(low_threshold)
+
+    def test_adaptive_mode_consistency_with_standard_spans(self):
+        """Test that adaptive mode maintains consistency with standard span functions."""
+        # Use text that adaptive mode handles differently
+        text = "She has a B.A. in English. Also an M.A. in Literature."
+
+        # Standard mode might split incorrectly
+        sent_tokenize(text, adaptive=False)  # Just verify it runs without error
+
+        # Adaptive mode should handle abbreviations better
+        adaptive_sentences = sent_tokenize(text, adaptive=True)
+
+        # Should get 2 sentences in adaptive mode
+        assert len(adaptive_sentences) == 2
+        assert adaptive_sentences[0] == "She has a B.A. in English."
+        assert adaptive_sentences[1] == "Also an M.A. in Literature."
+
+    def test_complex_adaptive_scenarios(self):
+        """Test complex scenarios that benefit from adaptive tokenization."""
+        text = """The meeting is at 3:30 p.m. today. Dr. Johnson (Ph.D., Stanford) will present.
+        
+        Key topics: A.I. developments, the new C.E.O.'s vision, and Q4 results."""
+
+        results = sent_tokenize(text, adaptive=True)
+        # Should handle abbreviations and formatting correctly
+        assert len(results) >= 2  # At least 2 main sentences
+
+        # Verify abbreviations weren't incorrectly split
+        full_text = " ".join(results)
+        assert "Dr. Johnson" in full_text
+        assert "Ph.D." in full_text
+        assert "C.E.O.'s" in full_text
+
+
 if __name__ == "__main__":
     # Run a few key tests manually
     test = TestSentTokenizeAdaptive()
     test.test_basic_adaptive_mode()
     test.test_return_confidence_flag()
 
-    test2 = TestSentTokenizeAdaptive()
+    test2 = TestSentTokenizeAdaptiveFunction()
     test2.test_basic_functionality()
 
     test3 = TestBackwardCompatibility()

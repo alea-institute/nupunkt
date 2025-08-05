@@ -13,6 +13,10 @@ nupunkt.__version__  # '0.6.0'
 # Functions
 nupunkt.sent_tokenize()
 nupunkt.sent_tokenize_adaptive()
+nupunkt.sent_spans()
+nupunkt.sent_spans_with_text()
+nupunkt.sent_spans_adaptive()
+nupunkt.sent_spans_with_text_adaptive()
 nupunkt.para_tokenize()
 nupunkt.para_spans()
 nupunkt.para_spans_with_text()
@@ -102,6 +106,146 @@ sentences = sent_tokenize_adaptive("She got her Ph.D. at M.I.T. yesterday.")
 
 # With custom threshold
 sentences = sent_tokenize_adaptive(text, threshold=0.85)
+```
+
+### sent_spans
+
+```python
+sent_spans(text: str) -> List[Tuple[int, int]]
+```
+
+Get sentence spans (start, end character positions) using the default model.
+
+**Parameters:**
+- `text`: The text to segment
+
+**Returns:**
+- List of (start_index, end_index) tuples
+
+**Notes:**
+- Spans are guaranteed to be contiguous (no gaps)
+- Spans cover the entire input text
+- Includes whitespace between sentences
+
+**Example:**
+```python
+spans = sent_spans("First sentence. Second sentence.")
+# Returns: [(0, 16), (16, 32)]
+
+for start, end in spans:
+    sentence = text[start:end]
+    print(f"[{start}:{end}] {sentence}")
+```
+
+### sent_spans_with_text
+
+```python
+sent_spans_with_text(text: str) -> List[Tuple[str, Tuple[int, int]]]
+```
+
+Get sentences with their spans using the default model.
+
+**Parameters:**
+- `text`: The text to segment
+
+**Returns:**
+- List of (sentence_text, (start_index, end_index)) tuples
+
+**Notes:**
+- Spans are guaranteed to be contiguous
+- Preserves all whitespace for perfect text reconstruction
+
+**Example:**
+```python
+results = sent_spans_with_text("Hello world. How are you?")
+# Returns: [("Hello world. ", (0, 13)), ("How are you?", (13, 25))]
+
+for sentence, (start, end) in results:
+    print(f"[{start}:{end}] {sentence}")
+    assert text[start:end] == sentence  # Always true
+```
+
+### sent_spans_adaptive
+
+```python
+sent_spans_adaptive(
+    text: str,
+    threshold: float = 0.7,
+    model: str = "default",
+    dynamic_abbrev: bool = True,
+    **kwargs,
+) -> List[Tuple[int, int]]
+```
+
+Get sentence spans using adaptive tokenization with confidence scoring.
+
+**Parameters:**
+- `text`: The text to segment
+- `threshold`: Confidence threshold (0.0-1.0)
+- `model`: Model to use - "default", a file path, or a model name
+- `dynamic_abbrev`: Discover abbreviation patterns at runtime
+- `**kwargs`: Additional arguments passed to the tokenizer
+
+**Returns:**
+- List of (start_index, end_index) tuples
+
+**Notes:**
+- Uses adaptive algorithm that dynamically recognizes abbreviations
+- Spans are guaranteed to be contiguous
+- Better handles unknown abbreviations like M.I.T., Ph.D., etc.
+
+**Example:**
+```python
+# Get spans for text with unknown abbreviations
+spans = sent_spans_adaptive("She studied at M.I.T. in Cambridge.")
+# Returns: [(0, 35)] - single sentence preserved
+
+# Tune for high precision
+spans = sent_spans_adaptive(legal_text, threshold=0.85)
+```
+
+### sent_spans_with_text_adaptive
+
+```python
+sent_spans_with_text_adaptive(
+    text: str,
+    threshold: float = 0.7,
+    model: str = "default",
+    dynamic_abbrev: bool = True,
+    return_confidence: bool = False,
+    **kwargs,
+) -> Union[List[Tuple[str, Tuple[int, int]]], List[Tuple[str, Tuple[int, int], float]]]
+```
+
+Get sentences with their spans using adaptive tokenization.
+
+**Parameters:**
+- `text`: The text to segment
+- `threshold`: Confidence threshold (0.0-1.0)
+- `model`: Model to use - "default", a file path, or a model name
+- `dynamic_abbrev`: Discover abbreviation patterns at runtime
+- `return_confidence`: Include confidence scores in the output
+- `**kwargs`: Additional arguments passed to the tokenizer
+
+**Returns:**
+- If `return_confidence=False`: List of (sentence, (start_index, end_index)) tuples
+- If `return_confidence=True`: List of (sentence, (start_index, end_index), confidence) tuples
+
+**Notes:**
+- Provides both sentence text and character positions
+- Optionally includes confidence scores for each sentence
+- Spans are contiguous and cover the entire text
+
+**Example:**
+```python
+# Get sentences with spans
+results = sent_spans_with_text_adaptive("Dr. Smith studied at M.I.T. today.")
+# Returns: [('Dr. Smith studied at M.I.T. today.', (0, 34))]
+
+# With confidence scores
+results = sent_spans_with_text_adaptive(text, return_confidence=True)
+for sentence, (start, end), confidence in results:
+    print(f"[{confidence:.2f}] [{start}:{end}] {sentence}")
 ```
 
 ### para_tokenize
@@ -239,6 +383,12 @@ Tokenize text into sentences.
 span_tokenize(text: str, realign_boundaries: bool = True) -> Iterator[Tuple[int, int]]
 ```
 Return sentence spans as (start, end) tuples.
+
+##### tokenize_with_spans
+```python
+tokenize_with_spans(text: str, realign_boundaries: bool = True) -> List[Tuple[str, Tuple[int, int]]]
+```
+Return sentences with their character spans. Spans are contiguous and cover the entire text.
 
 ##### add_abbreviation
 ```python

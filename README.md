@@ -12,11 +12,11 @@ nupunkt is a next-generation implementation of the Punkt algorithm specifically 
 
 Key features:
 - **Zero dependencies**: Pure Python 3.11+ (tqdm optional for progress bars)
+- **Adaptive mode**: Starting with `0.6.0`, supports an adaptive, confidence-based variant
 - **High precision**: 91.1% precision on legal text benchmarks
 - **High performance**: Processes 10+ million characters per second on standard CPU hardware
 - **Pre-trained model**: Ready to use with legal-optimized abbreviations
 - **Trainable**: Can be trained on domain-specific text
-- **Adaptive mode**: NEW! Dynamic pattern recognition for abbreviations
 - **Paragraph detection**: Split text into both sentences and paragraphs
 - **CLI tools**: Complete command-line interface for training and evaluation
 
@@ -85,19 +85,61 @@ The adaptive tokenizer:
 - Provides confidence scores for each boundary decision
 - Falls back to the robust base algorithm when uncertain
 
+## Sentence and Paragraph Spans
+
+Get character-level spans for sentences and paragraphs:
+
+```python
+from nupunkt import sent_spans, sent_spans_with_text, para_spans, para_spans_with_text
+
+# Get sentence spans (start, end positions)
+sentence_spans = sent_spans(text)
+
+# Get sentences with their spans
+sentences_with_spans = sent_spans_with_text(text)
+for sentence, (start, end) in sentences_with_spans:
+    print(f"[{start}:{end}] {sentence}")
+
+# Same for paragraphs
+paragraph_spans = para_spans(text)
+paragraphs_with_spans = para_spans_with_text(text)
+```
+
+### Adaptive Spans
+
+Get spans using the adaptive algorithm for better abbreviation handling:
+
+```python
+from nupunkt import sent_spans_adaptive, sent_spans_with_text_adaptive
+
+# Get adaptive sentence spans
+text = "Dr. Smith studied at M.I.T. in Cambridge."
+spans = sent_spans_adaptive(text)
+# Returns: [(0, 41)] - single sentence preserved
+
+# Get sentences with spans
+results = sent_spans_with_text_adaptive(text)
+for sentence, (start, end) in results:
+    print(f"[{start}:{end}] {sentence}")
+
+# With confidence scores
+results = sent_spans_with_text_adaptive(text, return_confidence=True)
+for sentence, (start, end), confidence in results:
+    print(f"[{confidence:.2f}] [{start}:{end}] {sentence}")
+```
+
+All span functions guarantee:
+- Contiguous spans with no gaps
+- Full coverage of the input text
+- Preservation of all whitespace
+
 ## Paragraph Detection
 
 ```python
-from nupunkt import para_tokenize, para_spans, para_spans_with_text
+from nupunkt import para_tokenize
 
 # Get paragraph text
 paragraphs = para_tokenize(text)
-
-# Get paragraph spans (start, end positions)
-spans = para_spans(text)
-
-# Get both text and spans
-para_with_spans = para_spans_with_text(text)
 ```
 
 ## Command-line Interface
