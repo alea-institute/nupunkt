@@ -23,6 +23,10 @@ def dunning_log_likelihood(count_a: int, count_b: int, count_ab: int, N: int) ->
     Returns:
         The log likelihood score (higher means more significant)
     """
+    # Handle edge case where N is zero
+    if N == 0:
+        return 0.0
+
     p1 = count_b / N
     p2 = 0.99
     null_hypo = count_ab * math.log(p1 + 1e-8) + (count_a - count_ab) * math.log(1.0 - p1 + 1e-8)
@@ -49,6 +53,10 @@ def collocation_log_likelihood(count_a: int, count_b: int, count_ab: int, N: int
     Returns:
         The log likelihood score for the collocation
     """
+    # Handle edge case where N is zero
+    if N == 0:
+        return 0.0
+
     p = count_b / N
     p1 = count_ab / count_a if count_a else 0
     try:

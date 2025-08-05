@@ -5,7 +5,7 @@ This module provides functionality for loading and optimizing the default pre-tr
 """
 
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 from nupunkt.utils.compression import (
@@ -21,24 +21,30 @@ def get_default_model_path() -> Path:
     Get the path to the default pre-trained model.
 
     The function searches for models in priority order:
-    1. Binary format (.bin)
+    1. Gzipped JSON (.json.gz)
     2. Compressed JSON (.json.xz)
-    3. Uncompressed JSON (.json)
+    3. Binary format (.bin)
+    4. Uncompressed JSON (.json)
 
     Returns:
         Path: The path to the default model file
     """
     base_dir = Path(__file__).parent
 
-    # Check for binary model first (most efficient format)
+    # Check for gzipped JSON first (best balance of size and features)
+    gz_path = base_dir / "default_model.json.gz"
+    if gz_path.exists():
+        return gz_path
+
+    # Check for xz compressed model next
+    xz_path = base_dir / "default_model.json.xz"
+    if xz_path.exists():
+        return xz_path
+
+    # Check for binary model (legacy format)
     binary_path = base_dir / "default_model.bin"
     if binary_path.exists():
         return binary_path
-
-    # Check for compressed model next
-    compressed_path = base_dir / "default_model.json.xz"
-    if compressed_path.exists():
-        return compressed_path
 
     # Fall back to uncompressed model
     return base_dir / "default_model.json"
@@ -56,7 +62,7 @@ def load_default_model() -> PunktSentenceTokenizer:
 
 
 def optimize_default_model(
-    output_path: Optional[Union[str, Path]] = None,
+    output_path: Union[str, Path] | None = None,
     format_type: str = "binary",
     compression_method: str = "lzma",
     compression_level: int = 6,
@@ -105,7 +111,7 @@ def optimize_default_model(
     return output_path
 
 
-def compare_model_formats(output_dir: Optional[Union[str, Path]] = None) -> Dict[str, int]:
+def compare_model_formats(output_dir: Union[str, Path] | None = None) -> Dict[str, int]:
     """
     Compare different storage formats for the default model and output their file sizes.
 
