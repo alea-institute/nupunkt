@@ -1,5 +1,7 @@
 # nupunkt
 
+> **Looking for Maximum Speed?** Check out [nupunkt-rs](https://github.com/alea-institute/nupunkt-rs) for a high-performance Rust implementation that's **3x faster** (30M+ characters/second) with the same accuracy. It provides a Python API via PyO3 bindings.
+
 A high-precision, high-throughput sentence boundary detection library optimized for legal text processing, with zero runtime dependencies.
 
 > **Note on Performance**: Version 0.6.0+ includes adaptive tokenization features that add slight overhead compared to v0.5.1 and earlier. While 0.6.0+ is marginally slower, it remains faster than comparable methods and provides user-configurable precision/recall control through the threshold parameter (e.g., `sent_tokenize_adaptive(text, threshold=0.1)` for more conservative sentence splitting).
