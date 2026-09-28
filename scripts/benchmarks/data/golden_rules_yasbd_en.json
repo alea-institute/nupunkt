@@ -1,0 +1,800 @@
+{
+ "name": "yasbd-lib expanded English Golden Rules Set",
+ "source_url": "https://github.com/speedyk-005/yasbd-lib/blob/0d2f0f4db8afcd9e6a5fc647fed7960b8a37f3b1/benchmarks/EN_GOLDEN_DATA.py",
+ "source_commit": "0d2f0f4db8afcd9e6a5fc647fed7960b8a37f3b1",
+ "origin": "Derived by yasbd-lib from the pySBD GRS (removed/altered some cases, added others). 'in_pysbd' marks inputs that appear verbatim in the pySBD set.",
+ "license": "MPL-2.0 (yasbd-lib). This JSON is a mechanical format conversion of EN_GOLDEN_DATA.py and remains under MPL-2.0; see https://mozilla.org/MPL/2.0/.",
+ "cases": [
+  {
+   "id": 1,
+   "text": "Hello World. My name is Jonas.",
+   "expected": [
+    "Hello World.",
+    "My name is Jonas."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 2,
+   "text": "What is your name? My name is Jonas.",
+   "expected": [
+    "What is your name?",
+    "My name is Jonas."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 3,
+   "text": "There it is! I found it.",
+   "expected": [
+    "There it is!",
+    "I found it."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 4,
+   "text": "My name is Jonas E. Smith.",
+   "expected": [
+    "My name is Jonas E. Smith."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 5,
+   "text": "Please turn to p. 55.",
+   "expected": [
+    "Please turn to p. 55."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 6,
+   "text": "Were Jane and co. at the party?",
+   "expected": [
+    "Were Jane and co. at the party?"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 7,
+   "text": "They closed the deal with Pitt, Briggs & Co. at noon.",
+   "expected": [
+    "They closed the deal with Pitt, Briggs & Co. at noon."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 8,
+   "text": "Let's ask Jane and co. They should know.",
+   "expected": [
+    "Let's ask Jane and co.",
+    "They should know."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 9,
+   "text": "They closed the deal with Pitt, Briggs & Co. It closed yesterday.",
+   "expected": [
+    "They closed the deal with Pitt, Briggs & Co.",
+    "It closed yesterday."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 10,
+   "text": "I can see Mt. Fuji from here.",
+   "expected": [
+    "I can see Mt. Fuji from here."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 11,
+   "text": "St. Michael's Church is on 5th st. near the light.",
+   "expected": [
+    "St. Michael's Church is on 5th st. near the light."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 12,
+   "text": "That is JFK Jr.'s book.",
+   "expected": [
+    "That is JFK Jr.'s book."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 13,
+   "text": "I visited the U.S.A. last year.",
+   "expected": [
+    "I visited the U.S.A. last year."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 14,
+   "text": "I live in the E.U. How about you?",
+   "expected": [
+    "I live in the E.U.",
+    "How about you?"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 15,
+   "text": "I live in the U.S. How about you?",
+   "expected": [
+    "I live in the U.S.",
+    "How about you?"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 16,
+   "text": "He serves in the U.S. Army.",
+   "expected": [
+    "He serves in the U.S. Army."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 17,
+   "text": "The U.S. government passed a new law.",
+   "expected": [
+    "The U.S. government passed a new law."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 18,
+   "text": "I have lived in the U.S. for 20 years.",
+   "expected": [
+    "I have lived in the U.S. for 20 years."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 19,
+   "text": "At 5 a.m., Mr. Smith went to the bank. He left the bank at 6 P.M. Mr. Smith then went to the store.",
+   "expected": [
+    "At 5 a.m., Mr. Smith went to the bank.",
+    "He left the bank at 6 P.M.",
+    "Mr. Smith then went to the store."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 20,
+   "text": "She has $100.00 in her bag.",
+   "expected": [
+    "She has $100.00 in her bag."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 21,
+   "text": "She has $100.00. It is in her bag.",
+   "expected": [
+    "She has $100.00.",
+    "It is in her bag."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 22,
+   "text": "He teaches science (He previously worked for 5 years as an engineer.) at the local University.",
+   "expected": [
+    "He teaches science (He previously worked for 5 years as an engineer.) at the local University."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 23,
+   "text": "Her email is Jane.Doe@example.com. I sent her an email.",
+   "expected": [
+    "Her email is Jane.Doe@example.com.",
+    "I sent her an email."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 24,
+   "text": "The site is: https://www.example.50.com/new-site/awesome_content.html. Please check it out.",
+   "expected": [
+    "The site is: https://www.example.50.com/new-site/awesome_content.html.",
+    "Please check it out."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 25,
+   "text": "She turned to him, 'This is great,' she said.",
+   "expected": [
+    "She turned to him, 'This is great,' she said."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 26,
+   "text": "She turned to him, \"This is great,\" she said.",
+   "expected": [
+    "She turned to him, \"This is great,\" she said."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 27,
+   "text": "She turned to him, \"This is great.\" She held the book out to show him.",
+   "expected": [
+    "She turned to him, \"This is great.\"",
+    "She held the book out to show him."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 28,
+   "text": "Hello!! Long time no see.",
+   "expected": [
+    "Hello!!",
+    "Long time no see."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 29,
+   "text": "Hello?? Who is there?",
+   "expected": [
+    "Hello??",
+    "Who is there?"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 30,
+   "text": "Hello!? Is that you?",
+   "expected": [
+    "Hello!?",
+    "Is that you?"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 31,
+   "text": "Hello?! Is that you?",
+   "expected": [
+    "Hello?!",
+    "Is that you?"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 32,
+   "text": "1.) The first item 2.) The second item",
+   "expected": [
+    "1.) The first item",
+    "2.) The second item"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 33,
+   "text": "1.) The first item. 2.) The second item.",
+   "expected": [
+    "1.) The first item.",
+    "2.) The second item."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 34,
+   "text": "1) The first item. 2) The second item.",
+   "expected": [
+    "1) The first item.",
+    "2) The second item."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 35,
+   "text": "1. The first item 2. The second item",
+   "expected": [
+    "1. The first item",
+    "2. The second item"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 36,
+   "text": "1. The first item. 2. The second item.",
+   "expected": [
+    "1. The first item.",
+    "2. The second item."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 37,
+   "text": "• 9. The first item • 10. The second item",
+   "expected": [
+    "• 9. The first item",
+    "• 10. The second item"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 38,
+   "text": "a. The first item b. The second item c. The third list item",
+   "expected": [
+    "a. The first item",
+    "b. The second item",
+    "c. The third list item"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 39,
+   "text": "You can find it at N°. 1026.253.553. That is where the treasure is.",
+   "expected": [
+    "You can find it at N°. 1026.253.553.",
+    "That is where the treasure is."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 40,
+   "text": "She works at Yahoo! in the accounting department.",
+   "expected": [
+    "She works at Yahoo! in the accounting department."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 41,
+   "text": "We make a good team, you and I. Did you see Albert I. Jones yesterday?",
+   "expected": [
+    "We make a good team, you and I.",
+    "Did you see Albert I. Jones yesterday?"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 42,
+   "text": "Thoreau argues that by simplifying one’s life, “the laws of the universe will appear less complex. . . .”",
+   "expected": [
+    "Thoreau argues that by simplifying one’s life, “the laws of the universe will appear less complex. . . .”"
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 43,
+   "text": "\"Bohr [...] used the analogy of parallel stairways [...]\" (Smith 55).",
+   "expected": [
+    "\"Bohr [...] used the analogy of parallel stairways [...]\" (Smith 55)."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 44,
+   "text": "If words are left off at the end of a sentence, and that is all that is omitted, indicate the omission with ellipsis marks (preceded and followed by a space) and then indicate the end of the sentence with a period . . . . Next sentence.",
+   "expected": [
+    "If words are left off at the end of a sentence, and that is all that is omitted, indicate the omission with ellipsis marks (preceded and followed by a space) and then indicate the end of the sentence with a period . . . .",
+    "Next sentence."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 45,
+   "text": "I never meant that.... She left the store.",
+   "expected": [
+    "I never meant that....",
+    "She left the store."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 46,
+   "text": "I wasn’t really ... well, what I mean...see . . . what I'm saying, the thing is . . . I didn’t mean it.",
+   "expected": [
+    "I wasn’t really ... well, what I mean...see . . . what I'm saying, the thing is . . . I didn’t mean it."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 47,
+   "text": "One further habit which was somewhat weakened . . . was that of combining words into self-interpreting compounds. . . . The practice was not abandoned. . . .",
+   "expected": [
+    "One further habit which was somewhat weakened . . . was that of combining words into self-interpreting compounds. . . .",
+    "The practice was not abandoned. . . ."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 48,
+   "text": "Hello world. How are you? I'm fine.",
+   "expected": [
+    "Hello world.",
+    "How are you?",
+    "I'm fine."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 49,
+   "text": "Did you remove num 2. Put it back.",
+   "expected": [
+    "Did you remove num 2.",
+    "Put it back."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 50,
+   "text": "I need you to find 3 items, e.g. a hat, a coat, and a bag.",
+   "expected": [
+    "I need you to find 3 items, e.g. a hat, a coat, and a bag."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 51,
+   "text": "The agreement was signed by A.B. Holdings Ltd. in 2024",
+   "expected": [
+    "The agreement was signed by A.B. Holdings Ltd. in 2024"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 52,
+   "text": "The temperature reached 37.5°C at 6 a.m. on Tue., Feb. 4.",
+   "expected": [
+    "The temperature reached 37.5°C at 6 a.m. on Tue., Feb. 4."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 53,
+   "text": "Our office is at 1600 Pennsylvania Ave. Hours are 9:00 a.m. to 5:00 p.m.",
+   "expected": [
+    "Our office is at 1600 Pennsylvania Ave.",
+    "Hours are 9:00 a.m. to 5:00 p.m."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 54,
+   "text": "I'll see you on Fri., Feb. 14th.",
+   "expected": [
+    "I'll see you on Fri., Feb. 14th."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 55,
+   "text": "The report was published in Dec. It was approved by Prof. Smith and Dr. Jones.",
+   "expected": [
+    "The report was published in Dec.",
+    "It was approved by Prof. Smith and Dr. Jones."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 56,
+   "text": "Mr. Smith lives on Hwy. 7 near Ave. Central.",
+   "expected": [
+    "Mr. Smith lives on Hwy. 7 near Ave. Central."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 57,
+   "text": "The delivery van broke down right in front of Sunset Blvd. The driver called a tow truck.",
+   "expected": [
+    "The delivery van broke down right in front of Sunset Blvd.",
+    "The driver called a tow truck."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 58,
+   "text": "The meeting is at 2 p.m. Please be on time.",
+   "expected": [
+    "The meeting is at 2 p.m.",
+    "Please be on time."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 59,
+   "text": "Q. What is his name? A. His name is Alfred E. Sloan.",
+   "expected": [
+    "Q. What is his name?",
+    "A. His name is Alfred E. Sloan."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 60,
+   "text": "The meeting is at 9 a.m. Monday",
+   "expected": [
+    "The meeting is at 9 a.m. Monday"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 61,
+   "text": "The proof is shown in eq. (7) and ex. IV",
+   "expected": [
+    "The proof is shown in eq. (7) and ex. IV"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 62,
+   "text": "See fig. 2 in vol. 3, ch. 4, pp. 18-22.",
+   "expected": [
+    "See fig. 2 in vol. 3, ch. 4, pp. 18-22."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 63,
+   "text": "Smith et al. (2020) found significant results. The study was replicated.",
+   "expected": [
+    "Smith et al. (2020) found significant results.",
+    "The study was replicated."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 64,
+   "text": "As shown in previous work (Smith, 2020; Jones, 2021), the trend continues.",
+   "expected": [
+    "As shown in previous work (Smith, 2020; Jones, 2021), the trend continues."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 65,
+   "text": "\"The results were conclusive\" (Smith, 2020, p. 15). Further analysis confirmed this.",
+   "expected": [
+    "\"The results were conclusive\" (Smith, 2020, p. 15).",
+    "Further analysis confirmed this."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 66,
+   "text": "As shown in pp. [55-60], the results are significant. This confirms our hypothesis.",
+   "expected": [
+    "As shown in pp. [55-60], the results are significant.",
+    "This confirms our hypothesis."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 67,
+   "text": "See sec. [2.1] for details. The methodology is described there.",
+   "expected": [
+    "See sec. [2.1] for details.",
+    "The methodology is described there."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 68,
+   "text": "Smith (2020) argued that [...] the trend was significant. Jones (2021) disagreed.",
+   "expected": [
+    "Smith (2020) argued that [...] the trend was significant.",
+    "Jones (2021) disagreed."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 69,
+   "text": "Hello ! ! ! !",
+   "expected": [
+    "Hello ! ! ! !"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 70,
+   "text": "Hello!? !! ?! Is that you?",
+   "expected": [
+    "Hello!? !! ?!",
+    "Is that you?"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 71,
+   "text": "\"How could we miss this!...\" Mark shouted, slamming his hand on the desk.",
+   "expected": [
+    "\"How could we miss this!...\"",
+    "Mark shouted, slamming his hand on the desk."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 72,
+   "text": "We found a memory leak in the C# wrapper.... It was subtle.",
+   "expected": [
+    "We found a memory leak in the C# wrapper....",
+    "It was subtle."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 73,
+   "text": "What I'm saying, the thing is . . . I didn't mean it.",
+   "expected": [
+    "What I'm saying, the thing is . . . I didn't mean it."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 74,
+   "text": "We spent the afternoon playing Adopt Me! on the computer while eating Chips Ahoy! cookies.",
+   "expected": [
+    "We spent the afternoon playing Adopt Me! on the computer while eating Chips Ahoy! cookies."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 75,
+   "text": "My dad logged into Yahoo! finance to check on Yum! Brands stock performance before dinner.",
+   "expected": [
+    "My dad logged into Yahoo! finance to check on Yum! Brands stock performance before dinner."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 76,
+   "text": "Yahoo! The server is down.",
+   "expected": [
+    "Yahoo!",
+    "The server is down."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 77,
+   "text": "(See Fig. 4. This outlines the memory layout.) The engine executes next.",
+   "expected": [
+    "(See Fig. 4. This outlines the memory layout.)",
+    "The engine executes next."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 78,
+   "text": "She turned to him, \"This is great.\" she said.",
+   "expected": [
+    "She turned to him, \"This is great.\" she said."
+   ],
+   "in_pysbd": true
+  },
+  {
+   "id": 79,
+   "text": "'Is this okay?' she said.",
+   "expected": [
+    "'Is this okay?' she said."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 80,
+   "text": "Can you believe how much money he has made from his Where's Wally? series of books (published in the US as Where's Waldo?)?",
+   "expected": [
+    "Can you believe how much money he has made from his Where's Wally? series of books (published in the US as Where's Waldo?)?"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 81,
+   "text": "According to his publisher, Smith bought the company in 1985 [or 1984?], but he wasn't active in its management until 1990.",
+   "expected": [
+    "According to his publisher, Smith bought the company in 1985 [or 1984?], but he wasn't active in its management until 1990."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 82,
+   "text": "Then he stop. \"wait\" he said",
+   "expected": [
+    "Then he stop.",
+    "\"wait\" he said"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 83,
+   "text": "The letter concluded with a simple warning: 'Do not follow me.' Then she left.",
+   "expected": [
+    "The letter concluded with a simple warning: 'Do not follow me.'",
+    "Then she left."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 84,
+   "text": "He said: \"First sentence. Second sentence.\" Then done.",
+   "expected": [
+    "He said: \"First sentence. Second sentence.\"",
+    "Then done."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 85,
+   "text": "The project (Sinta) was nearing completion... or so we thought.",
+   "expected": [
+    "The project (Sinta) was nearing completion... or so we thought."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 86,
+   "text": "One further habit ... compounds. . . . The practice was not abandoned.",
+   "expected": [
+    "One further habit ... compounds. . . .",
+    "The practice was not abandoned."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 87,
+   "text": "Why Complex Carbohydrates............... 19",
+   "expected": [
+    "Why Complex Carbohydrates............... 19"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 88,
+   "text": "Life expectancy for Black women was 77.5 years in 2008.",
+   "expected": [
+    "Life expectancy for Black women was 77.5 years in 2008."
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 89,
+   "text": "The LM's Descent Propulsion System began a 29-second burn at 109:23:39.9 to move the craft to the lower orbit,",
+   "expected": [
+    "The LM's Descent Propulsion System began a 29-second burn at 109:23:39.9 to move the craft to the lower orbit,"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 90,
+   "text": "我喜欢AI。 It is useful",
+   "expected": [
+    "我喜欢AI。",
+    "It is useful"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 91,
+   "text": "The meeting is at 2 p.m. 请别迟到。",
+   "expected": [
+    "The meeting is at 2 p.m.",
+    "请别迟到。"
+   ],
+   "in_pysbd": false
+  },
+  {
+   "id": 92,
+   "text": "那个会议在下午两点。 Please don't be late!",
+   "expected": [
+    "那个会议在下午两点。",
+    "Please don't be late!"
+   ],
+   "in_pysbd": false
+  }
+ ]
+}

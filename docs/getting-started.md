@@ -395,7 +395,7 @@ def process_large_file(filename):
 
 You may see warnings like:
 ```
-UserWarning: Model was created with nupunkt 0.6.0, but current version is 0.7.0
+UserWarning: Model was created with nupunkt 0.7.0, but current version is 0.8.0
 ```
 
 This is informational and the model will still work correctly.

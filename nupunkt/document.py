@@ -25,10 +25,11 @@ time, the first time a sentence's ``words`` are read.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from typing import TYPE_CHECKING, Any
 
 from nupunkt.core.language_vars import PunktLanguageVars
+from nupunkt.layout import iter_blocks, layout_segments
 from nupunkt.segmentation import Segment, WordSegmenter
 from nupunkt.tokenizers.paragraph_tokenizer import PARAGRAPH_BREAK_PATTERN
 
@@ -162,6 +163,30 @@ class Paragraph(Segment):
         }
 
 
+def _build_blocks(
+    text: str, span_tokenize: Callable[[str], Iterable[tuple[int, int]]], line_breaks: bool
+) -> list[Paragraph]:
+    """Build the tree with blank lines as paragraph (and sentence) boundaries."""
+    paragraphs: list[Paragraph] = []
+    for block_start, block_end in iter_blocks(text, True, False):
+        start, stop = _strip_span(text, block_start, block_end)
+        if stop <= start:
+            continue
+        block = text[block_start:block_end]
+        sentences = [
+            Sentence(s.text, s.start, s.end)
+            for s in layout_segments(block, span_tokenize, False, line_breaks)
+        ]
+        # layout_segments worked on the block; shift to document offsets
+        sentences = [
+            Sentence(s.text, s.start + block_start, s.end + block_start) for s in sentences
+        ]
+        para = Paragraph(text[start:stop], start, stop)
+        para._sentences = sentences
+        paragraphs.append(para)
+    return paragraphs
+
+
 def _build(text: str, spans: Iterator[tuple[int, int]]) -> list[Paragraph]:
     """Build the paragraph/sentence tree from raw ``span_tokenize`` spans."""
     paragraphs: list[Paragraph] = []
@@ -208,18 +233,36 @@ class Document:
         self.paragraphs = paragraphs
 
     @classmethod
-    def from_tokenizer(cls, text: str, tokenizer: PunktSentenceTokenizer) -> Document:
+    def from_tokenizer(
+        cls,
+        text: str,
+        tokenizer: PunktSentenceTokenizer,
+        paragraph_breaks: bool = True,
+        line_breaks: bool = False,
+    ) -> Document:
         """
         Segment ``text`` with a sentence tokenizer in a single pass.
 
         Args:
             text: The text to segment
             tokenizer: Any object with Punkt's ``span_tokenize(text)`` method
+            paragraph_breaks: Blank lines separate paragraphs and end sentences
+                (see :mod:`nupunkt.layout`); with ``False`` paragraphs are derived
+                from Punkt boundaries followed by a blank line, as in 0.7.0
+            line_breaks: Heading and list-item line breaks also end sentences
 
         Returns:
             The segmented document
         """
-        return cls(text, _build(text, tokenizer.span_tokenize(text)))
+        if not paragraph_breaks:
+            spans = tokenizer.span_tokenize(text)
+            if line_breaks:
+                spans = (
+                    (s.start, s.end)
+                    for s in layout_segments(text, tokenizer.span_tokenize, False, True)
+                )
+            return cls(text, _build(text, iter(spans)))
+        return cls(text, _build_blocks(text, tokenizer.span_tokenize, line_breaks))
 
     @property
     def sentences(self) -> list[Sentence]:

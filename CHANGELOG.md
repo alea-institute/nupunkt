@@ -5,10 +5,76 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-09-28
+
+Layout-aware segmentation, a public comparison against other sentence splitters, and
+fixes for publicly reported cases. All 0.7.0 and 0.6.0 function and method names keep
+working; the segmentation interface introduced in 0.7.0 changes its default where blank
+lines occur inside what Punkt considered one sentence (see Migration notes).
+
+### Highlights
+
+| | 0.7.0 | 0.8.0 |
+|---|---|---|
+| Legal gold set with paragraph markers, F1 (P / R) | 0.714 (0.93 / 0.58) | 0.932 (0.95 / 0.92) |
+| UD English GUM with paragraphs, F1 | 0.927 | 0.972 |
+| UD English EWT with paragraphs, F1 | 0.869 | 0.919 |
+| Legal gold set, Punkt-only, F1 | 0.782 | 0.784 |
+| yasbd 92-string golden rules, passes | 67 | 72 |
+| Publicly reported failure cases fixed (of 41) | 27 pass | 29 pass, 0 regressed |
+
+### Added
+- **Layout-aware segmentation** (`nupunkt.layout`, [docs/layout.md](docs/layout.md)).
+  The segmentation interface (`sentences`, `sentence_spans`, `sentence_segments`,
+  `segmenter`, `segment`, `iter_segments`) now treats a blank line as a hard sentence
+  boundary by default (`paragraph_breaks=True`), so headings, captions and list items
+  become units of their own. Measured on gold sets that keep paragraph structure, recall
+  rises 9-35 points at unchanged precision (legal with paragraph markers F1 0.716 -> 0.932,
+  UD EWT 0.869 -> 0.919, UD GUM 0.928 -> 0.972). A sentence still continues across a blank
+  line when the preceding line has no terminal punctuation and either ends with a hyphen
+  or the next block starts lowercase, which is the page-break shape of OCR'd documents.
+  `line_breaks=True` (opt-in) also cuts at heading and list-item line breaks.
+  `blank_page_furniture(text)` blanks page-number lines and form feeds while preserving
+  offsets. The legacy `sent_tokenize` family is unchanged.
+- `PunktSentenceTokenizer.abbreviations` (read-only snapshot) and `.parameters` (the live
+  `PunktParameters`), so integrations no longer need to read `_params`.
+- `PunktSentenceTokenizer.EXCL_QUEST_LOWERCASE_CONTINUES` (opt-in, off): treat `!` or `?`
+  followed by a lowercase word as sentence-internal (`Yahoo! in 1995`). Off by default
+  because it costs a point of F1 on informal web text.
+- `docs/benchmarks/`: reproducible accuracy, performance, Golden Rules and known-cases
+  evidence, with scripts under `scripts/benchmarks/`, and `comparison.md` with a Pareto
+  analysis against other splitters (including dependency footprint) and recommendations
+  by use case.
+
+### Changed
+- Closing punctuation tokens (`"`, `)`, `”` ...) are transparent when pairing tokens, so an
+  abbreviation followed by a closing quote sees the next word (`'Do not follow me.' Then`
+  now splits; `"U.S." He` too).
+- A spaced or Unicode ellipsis followed by the pronoun `I` no longer ends the sentence.
+- Runs of terminal punctuation separated by spaces (`Hello ! ! !`) are one terminator.
+- `term` removed from the bundled abbreviation set (it broke `2. Term.` list items).
+- The adaptive threshold documentation had its direction backwards: a higher
+  `confidence_threshold` produces more sentence breaks, a lower one fewer.
+- Segmentation-interface methods (`segments`, `texts`, `spans` and `iter_*`) accept keyword
+  options and pass them to `iter_segments`; unknown options raise `TypeError`.
+
+### Corrected
+- The 0.7.0 release notes overstated throughput: "60+ MB/s" was measured on repeated
+  input, where boundary decisions are memoized. On unseen text 0.7.0 runs at 23-26
+  Mchar/s per core, twice 0.6.0 and about equal to 0.5.1. The 0.7.0 table below has been
+  corrected, and the full measurement is in `docs/benchmarks/performance.md`.
+
+### Migration notes
+- Output of the segmentation interface changes where blank lines occur inside what Punkt
+  considered one sentence. Pass `paragraph_breaks=False` to keep the 0.7.0 behaviour, or set
+  `tokenizer.paragraph_breaks = False` on a tokenizer object.
+- `paragraph_segments` / `paragraphs` now return one paragraph per blank-line block;
+  `para_tokenize` and `para_spans` are unchanged.
+
 ## [0.7.0] - 2026-09-27
 
 A correctness and performance release. Tokenization is deterministic again, the bundled
-model is 25 KB instead of 9.2 MB, the tokenizer is several times faster, and there is a
+model is 25 KB instead of 9.2 MB, the tokenizer is twice as fast as 0.6.0 on unseen text, and there is a
 single segmentation interface for words, sentences and paragraphs. All 0.6 function and
 method names keep working with their previous behaviour.
 
@@ -18,9 +84,10 @@ method names keep working with their previous behaviour.
 |---|---|---|
 | Legal gold set boundary F1 (precision) | 0.722 (0.776) | 0.782 (0.902) |
 | Bundled model file | 9.2 MB | 25 KB |
-| First call (model load) | 1.3 s | ~2 ms |
+| Import plus first call, fresh process | 1.3 s | 14 ms |
 | Resident memory after load | ~320 MB | ~19 MB |
-| Throughput, warm, 4 MB legal corpus | 13 MB/s | 60+ MB/s |
+| Throughput on unseen legal text, one core | 11 Mchar/s | 24 Mchar/s |
+| Throughput on repeated text (memoized decisions) | 13 Mchar/s | 43-68 Mchar/s |
 
 ### Added
 - **Standard segmentation interface** (`nupunkt.segmentation`). Words, sentences and
