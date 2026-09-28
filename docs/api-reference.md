@@ -8,7 +8,7 @@ Complete reference for nupunkt's Python API.
 import nupunkt
 
 # Version
-nupunkt.__version__  # '0.6.0'
+nupunkt.__version__  # '0.7.0'
 
 # Functions
 nupunkt.sent_tokenize()
@@ -31,6 +31,103 @@ nupunkt.PunktParameters
 nupunkt.PunktLanguageVars
 nupunkt.PunktToken
 ```
+
+## Segmentation Interface
+
+All segmenters share one interface, defined in `nupunkt.segmentation`:
+
+| Form    | List             | Generator             |
+|---------|------------------|-----------------------|
+| strings | `texts(text)`    | `iter_texts(text)`    |
+| spans   | `spans(text)`    | `iter_spans(text)`    |
+| both    | `segments(text)` | `iter_segments(text)` |
+
+`PunktSentenceTokenizer`, `AdaptiveTokenizer`, `PunktParagraphTokenizer` and
+`WordSegmenter` all implement it (via `SegmenterMixin`, which derives the six
+methods from `iter_segments`). The `Segmenter` protocol is runtime-checkable.
+
+### Segment
+
+```python
+class Segment(NamedTuple):
+    text: str
+    start: int   # inclusive
+    end: int     # exclusive; source[start:end] == text
+    span: tuple[int, int]  # property, (start, end)
+```
+
+Invariants for every segmenter: spans are tight (no surrounding whitespace),
+ascending and non-overlapping; empty or whitespace-only input gives `[]`.
+
+### Module-level functions
+
+| Level     | Strings            | Spans                    | Both                        |
+|-----------|--------------------|--------------------------|-----------------------------|
+| word      | `words(text)`      | `word_spans(text)`       | `word_segments(text)`       |
+| sentence  | `sentences(text)`  | `sentence_spans(text)`   | `sentence_segments(text)`   |
+| paragraph | `paragraphs(text)` | `paragraph_spans(text)`  | `paragraph_segments(text)`  |
+
+Sentence functions take `model="default"`, `adaptive=False`,
+`confidence_threshold=0.7` and `dynamic_abbrev=True`. Paragraph functions take
+`model="default"`. Word segmentation uses Punkt's own word tokenizer (trailing
+periods stay attached, possessives are one token) so that word spans line up
+with the tokens the sentence tokenizer reasons about.
+
+### segmenter
+
+```python
+segmenter(level="sentence", model="default", adaptive=False,
+          confidence_threshold=0.7, dynamic_abbrev=True) -> Segmenter
+```
+
+Returns a cached, reusable segmenter for `"word"`, `"sentence"` or `"paragraph"`.
+Use it for the generator forms or when segmenting many texts.
+
+### contiguous
+
+```python
+contiguous(segments: Iterable[Segment], source: str) -> list[Segment]
+```
+
+Extends tight segments so that they cover `source` without gaps: each segment
+absorbs the whitespace after it, the first also absorbs leading whitespace, and
+`"".join(s.text for s in result) == source`.
+
+### segment and Document
+
+```python
+segment(text: str, model: str | PunktSentenceTokenizer = "default") -> Document
+```
+
+Segments `text` into paragraphs, sentences and words from a **single** sentence
+pass (defined in `nupunkt.document`). The flat lists equal the per-level
+functions: `doc.paragraphs == paragraph_segments(text)`,
+`doc.sentences == sentence_segments(text)`, `doc.words == word_segments(text)`.
+
+| Class       | Children                           | Other members                                                    |
+|-------------|------------------------------------|------------------------------------------------------------------|
+| `Document`  | `paragraphs: list[Paragraph]`      | `text`, `sentences`, `words` (flat), `iter_paragraphs/sentences/words()`, `to_dict(words=True)`, `from_tokenizer(text, tokenizer)` |
+| `Paragraph` | `sentences: list[Sentence]`        | `words` (flat), `iter_sentences()`, `iter_words()`, `to_dict()`  |
+| `Sentence`  | `words: list[Segment]` (lazy)      | `iter_words()`, `to_dict()`                                      |
+
+`Paragraph` and `Sentence` subclass `Segment`, so they have `.text`, `.start`,
+`.end`, `.span`, unpack as `(text, start, end)` and compare equal to the plain
+`Segment` with the same values (children are not part of equality). Words are
+computed per sentence on first access and cached; `iter_words()` computes them
+one sentence at a time. Spans are tight and nest: every word lies inside its
+sentence and every sentence inside its paragraph.
+
+A paragraph ends at a sentence boundary followed by a blank line, exactly as in
+`PunktParagraphTokenizer`; `nupunkt.document.is_paragraph_break(text, pos)`
+exposes that rule.
+
+### Relationship to the legacy functions
+
+The functions below (`sent_tokenize`, `sent_spans`, `para_tokenize`, ...) and
+the `tokenize` / `span_tokenize` / `tokenize_with_spans` methods keep their
+original behaviour: `sent_spans` and `para_spans` return *contiguous* spans that
+include surrounding whitespace, and `sent_tokenize` keeps leading whitespace on
+the first sentence. New code should prefer the interface above.
 
 ## Core Functions
 
@@ -673,7 +770,7 @@ except TypeError as e:
 1. **Model Caching**: The `load()` function caches up to 8 models
 2. **Tokenizer Reuse**: Create once, use many times
 3. **Batch Processing**: Process multiple texts with same tokenizer
-4. **Memory**: Models use ~50-100MB RAM when loaded
+4. **Memory**: The default model uses about 20 MB RAM when loaded (the file is 25 KB); models that keep the orthographic context can use 100 MB or more
 
 ## Caching Behavior
 

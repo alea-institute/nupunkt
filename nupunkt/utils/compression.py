@@ -10,7 +10,7 @@ import lzma
 import struct
 import zlib
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any
 
 # Binary format version identifier (increment when format changes)
 BINARY_FORMAT_VERSION = 1
@@ -22,7 +22,7 @@ FORMAT_BINARY = 3
 
 
 def save_compressed_json(
-    data: Dict[str, Any], file_path: Union[str, Path], level: int = 1, use_compression: bool = True
+    data: dict[str, Any], file_path: str | Path, level: int = 1, use_compression: bool = True
 ) -> None:
     """
     Save data as a compressed JSON file using LZMA.
@@ -59,7 +59,7 @@ def save_compressed_json(
             f.write(json_str)
 
 
-def load_compressed_json(file_path: Union[str, Path], encoding: str = "utf-8") -> Dict[str, Any]:
+def load_compressed_json(file_path: str | Path, encoding: str = "utf-8") -> dict[str, Any]:
     """
     Load data from a JSON file, which may be compressed with gzip or LZMA.
 
@@ -98,8 +98,8 @@ def load_compressed_json(file_path: Union[str, Path], encoding: str = "utf-8") -
 
 
 def save_binary_model(
-    data: Dict[str, Any],
-    file_path: Union[str, Path],
+    data: dict[str, Any],
+    file_path: str | Path,
     compression_method: str = "zlib",
     level: int = 6,
 ) -> None:
@@ -205,7 +205,7 @@ def save_binary_model(
         f.write(binary_data)
 
 
-def load_binary_model(file_path: Union[str, Path]) -> Dict[str, Any]:
+def load_binary_model(file_path: str | Path) -> dict[str, Any]:
     """
     Load data from a binary format model file.
 
@@ -255,7 +255,7 @@ def load_binary_model(file_path: Union[str, Path]) -> Dict[str, Any]:
             )
 
         # Parse binary data
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "abbrev_types": [],
             "collocations": [],
             "sent_starters": [],
@@ -317,9 +317,7 @@ def load_binary_model(file_path: Union[str, Path]) -> Dict[str, Any]:
         }
 
 
-def compare_formats(
-    data: Dict[str, Any], output_dir: Union[str, Path] | None = None
-) -> Dict[str, Any]:
+def compare_formats(data: dict[str, Any], output_dir: str | Path | None = None) -> dict[str, Any]:
     """
     Compare different storage formats for the same model data.
 

@@ -7,7 +7,7 @@ while maintaining the core Punkt principles.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 
 @dataclass
@@ -16,7 +16,7 @@ class AlgorithmVariant:
 
     name: str
     description: str
-    modifications: Dict[str, Any]
+    modifications: dict[str, Any]
 
     def apply(self) -> None:
         """Apply this variant's modifications."""
@@ -27,7 +27,7 @@ class AlgorithmVariant:
 
 def discover_improvements(
     base_model_path: str | Path, test_dataset: str | Path, output_dir: str | Path | None = None
-) -> List[AlgorithmVariant]:
+) -> list[AlgorithmVariant]:
     """
     Discover potential algorithmic improvements.
 
@@ -47,7 +47,7 @@ def discover_improvements(
 
 def test_algorithm_variant(
     variant: AlgorithmVariant, train_data: str | Path, test_data: str | Path
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Test a specific algorithm variant."""
     # Apply variant
     variant.apply()

@@ -8,22 +8,23 @@ Punkt tokenizer models.
 import gzip
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable
 
 from nupunkt.trainers.base_trainer import PunktTrainer
 from nupunkt.training.hyperparameters import PRESETS, PunktHyperparameters
 
-# Optional imports for HuggingFace datasets
+# Optional imports for HuggingFace datasets (not a runtime dependency of nupunkt;
+# only needed if the caller wants to train from "hf:org/dataset" sources).
 try:
-    from datasets import load_dataset
-    from tokenizers import Tokenizer
+    from datasets import load_dataset  # ty: ignore[unresolved-import]
+    from tokenizers import Tokenizer  # ty: ignore[unresolved-import]
 
     HF_AVAILABLE = True
 except ImportError:
     HF_AVAILABLE = False
 
 
-def load_abbreviations(file_path: Union[str, Path]) -> List[str]:
+def load_abbreviations(file_path: str | Path) -> list[str]:
     """
     Load abbreviations from a JSON file.
 
@@ -50,7 +51,7 @@ def load_abbreviations(file_path: Union[str, Path]) -> List[str]:
 
 
 def load_jsonl_text(
-    file_path: Union[str, Path],
+    file_path: str | Path,
     max_samples: int | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> str:
@@ -169,10 +170,10 @@ def load_huggingface_text(
 
 
 def train_model(
-    training_texts: Union[str, List[str], List[Path]],
-    abbreviations: List[str] | None = None,
-    abbreviation_files: List[Union[str, Path]] | None = None,
-    output_path: Union[str, Path] | None = None,
+    training_texts: str | list[str | Path],
+    abbreviations: list[str] | None = None,
+    abbreviation_files: list[str | Path] | None = None,
+    output_path: str | Path | None = None,
     max_samples: int | None = None,
     format_type: str = "binary",
     compression_method: str = "zlib",
@@ -188,7 +189,7 @@ def train_model(
     progress_callback: Callable[[str, int, int], None] | None = None,
     use_default_abbreviations: bool = True,
     tokenizer_name: str | None = None,
-    hyperparameters: Union[str, Dict[str, Any], PunktHyperparameters, None] = None,
+    hyperparameters: str | dict[str, Any] | PunktHyperparameters | None = None,
 ) -> PunktTrainer:
     """
     Train a Punkt sentence tokenizer model.
@@ -271,9 +272,8 @@ def train_model(
 
     # Load default abbreviations if requested
     if use_default_abbreviations:
-        # Get package root directory
-        package_dir = Path(__file__).parent.parent
-        data_dir = package_dir.parent / "data"
+        # Bundled with the package so they are available in installed distributions
+        data_dir = Path(__file__).parent.parent / "data"
 
         # Default abbreviation files
         default_abbrev_files = [
@@ -322,11 +322,11 @@ def train_model(
                         dataset_name,
                         tokenizer_name=tokenizer_name,
                         max_samples=max_samples,
-                        progress_callback=lambda curr, total: progress_callback(
-                            "hf_loading", curr, total
-                        )
-                        if progress_callback
-                        else None,
+                        progress_callback=lambda curr, total: (
+                            progress_callback("hf_loading", curr, total)
+                            if progress_callback
+                            else None
+                        ),
                     )
                     combined_text += text + "\n\n"
                 else:
@@ -373,7 +373,7 @@ def train_model(
     return trainer
 
 
-def get_training_stats(trainer: PunktTrainer) -> Dict[str, Any]:
+def get_training_stats(trainer: PunktTrainer) -> dict[str, Any]:
     """
     Get statistics about a trained model.
 

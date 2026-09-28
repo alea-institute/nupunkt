@@ -9,7 +9,7 @@ import gzip
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, List
+from typing import Any, Iterator
 
 
 @dataclass
@@ -17,11 +17,11 @@ class TestCase:
     """Single test case for evaluation."""
 
     text: str
-    sentences: List[str]
-    metadata: Dict[str, Any] | None = None
+    sentences: list[str]
+    metadata: dict[str, Any] | None = None
 
 
-def parse_annotated_text(text: str, delimiter: str = "<|sentence|>") -> List[str]:
+def parse_annotated_text(text: str, delimiter: str = "<|sentence|>") -> list[str]:
     """
     Parse text with sentence boundary annotations.
 
@@ -131,7 +131,7 @@ def load_evaluation_data(
     format: str = "auto",
     max_samples: int | None = None,
     show_progress: bool = False,
-) -> List[TestCase]:
+) -> list[TestCase]:
     """
     Load evaluation data from various formats.
 
@@ -176,8 +176,8 @@ def load_evaluation_data(
 
 
 def create_test_cases(
-    texts: List[str], sentence_lists: List[List[str]], metadata: List[Dict[str, Any]] | None = None
-) -> List[TestCase]:
+    texts: list[str], sentence_lists: list[list[str]], metadata: list[dict[str, Any]] | None = None
+) -> list[TestCase]:
     """
     Create test cases from separate lists.
 
@@ -201,7 +201,7 @@ def create_test_cases(
 
 
 def save_evaluation_dataset(
-    test_cases: List[TestCase], output_path: str | Path, delimiter: str = "<|sentence|>"
+    test_cases: list[TestCase], output_path: str | Path, delimiter: str = "<|sentence|>"
 ) -> None:
     """
     Save evaluation dataset in JSONL format.

@@ -134,6 +134,32 @@ print("Result:", sentences)
 # Result: ['Visit I.B.M. today.']
 ```
 
+## The Segmentation Interface
+
+Words, sentences and paragraphs share one API: `<level>s(text)` for strings,
+`<level>_spans(text)` for `(start, end)` spans and `<level>_segments(text)` for
+both as `Segment(text, start, end)` named tuples.
+
+```python
+from nupunkt import words, sentences, paragraphs, sentence_segments, segmenter
+
+text = "Dr. Smith arrived. He left.\n\nThe end."
+sentences(text)          # ['Dr. Smith arrived.', 'He left.', 'The end.']
+paragraphs(text)         # ['Dr. Smith arrived. He left.', 'The end.']
+words("Dr. Smith's car") # ['Dr.', "Smith's", 'car']
+
+for s in sentence_segments(text):
+    assert text[s.start:s.end] == s.text
+
+# Generators via a reusable segmenter
+for s in segmenter("sentence").iter_segments(text):
+    ...
+```
+
+Spans are tight (no surrounding whitespace). See the API reference for
+`contiguous()` and the full interface. The sections below describe the original
+`sent_spans` / `para_spans` functions, which remain available.
+
 ## Getting Sentence Spans
 
 Sometimes you need to know the exact position of sentences in the original text:
@@ -369,7 +395,7 @@ def process_large_file(filename):
 
 You may see warnings like:
 ```
-UserWarning: Model was created with nupunkt 0.5.1, but current version is 0.6.0
+UserWarning: Model was created with nupunkt 0.6.0, but current version is 0.7.0
 ```
 
 This is informational and the model will still work correctly.

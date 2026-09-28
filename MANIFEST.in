@@ -3,6 +3,7 @@ include README.md
 include CHANGELOG.md
 include nupunkt/py.typed
 include nupunkt/models/*.json.gz
+include nupunkt/data/*.json
 
 recursive-exclude * __pycache__
 recursive-exclude * *.py[cod]

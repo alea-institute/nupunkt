@@ -9,6 +9,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from nupunkt._version import __version__
 from nupunkt.evaluation.evaluator import compare_models, evaluate_model
 from nupunkt.optimization.hyperparameter import HyperparameterSpace, optimize_hyperparameters
 from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
@@ -345,7 +346,7 @@ def main():
     )
 
     # Add version argument
-    parser.add_argument("--version", action="version", version="%(prog)s 0.6.0")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     # Create subparsers
     subparsers = parser.add_subparsers(dest="command", help="Available commands")

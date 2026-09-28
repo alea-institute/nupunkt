@@ -9,7 +9,6 @@ external dependencies.
 import os
 import sys
 from pathlib import Path
-from typing import List
 
 
 def get_user_data_dir() -> Path:
@@ -84,7 +83,7 @@ def get_legacy_user_dir() -> Path:
     return Path.home() / ".nupunkt"
 
 
-def get_model_search_paths() -> List[Path]:
+def get_model_search_paths() -> list[Path]:
     """
     Get all directories where models should be searched, in priority order.
 

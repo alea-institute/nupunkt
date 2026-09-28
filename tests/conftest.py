@@ -1,7 +1,6 @@
 """Pytest configuration for nupunkt tests."""
 
 from pathlib import Path
-from typing import List
 
 import pytest
 
@@ -15,14 +14,14 @@ from nupunkt import (
 def clear_token_cache():
     """Clear the module-level token cache before each test to prevent cross-test pollution."""
     # Import here to avoid circular imports
-    from nupunkt.core.tokens import _token_instance_cache
-    
+    from nupunkt.core.tokens import _derived_cache as _token_instance_cache
+
     # Clear the cache before the test
     _token_instance_cache.clear()
-    
+
     # Run the test
     yield
-    
+
     # Optionally clear after as well (not strictly necessary)
     _token_instance_cache.clear()
 
@@ -58,7 +57,7 @@ def scientific_text() -> str:
 
 
 @pytest.fixture
-def common_abbreviations() -> List[str]:
+def common_abbreviations() -> list[str]:
     """Return a list of common abbreviations for testing."""
     return ["dr", "mr", "mrs", "ms", "prof", "etc", "e.g", "i.e", "u.s.a", "ph.d"]
 

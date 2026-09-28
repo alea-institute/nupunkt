@@ -12,13 +12,8 @@ from pathlib import Path
 from typing import (
     Any,
     ClassVar,
-    Dict,
+    Iterable,
     Iterator,
-    List,
-    Set,
-    Tuple,
-    Type,
-    Union,
 )
 from typing import (
     Counter as CounterType,
@@ -75,7 +70,12 @@ class PunktTrainer(PunktBase):
     CHUNK_SIZE: int = 10000  # Size of token chunks for processing in memory-efficient mode
 
     # Common English abbreviations that should always be detected
-    COMMON_ABBREVS: ClassVar[List[str]] = ["..."]  # Include ellipsis as a common "abbreviation"
+    COMMON_ABBREVS: ClassVar[list[str]] = ["..."]  # Include ellipsis as a common "abbreviation"
+
+    # Markers for sentence-annotated training text ("First.<|sentence|> Second.").
+    # Text carrying them also teaches per-abbreviation break rates.
+    SENTENCE_MARKER: ClassVar[str] = "<|sentence|>"
+    PARAGRAPH_MARKER: ClassVar[str] = "<|paragraph|>"
 
     # JSON serialization keys
     CONFIG_ABBREV: str = "abbrev_threshold"
@@ -102,7 +102,7 @@ class PunktTrainer(PunktBase):
         train_text: str | None = None,
         verbose: bool = False,
         lang_vars: PunktLanguageVars | None = None,
-        token_cls: Type[PunktToken] = PunktToken,
+        token_cls: type[PunktToken] = PunktToken,
         include_common_abbrevs: bool = True,  # Whether to include common abbreviations by default
         memory_efficient: bool | None = None,  # Whether to use memory-efficient mode
     ) -> None:
@@ -120,7 +120,7 @@ class PunktTrainer(PunktBase):
         super().__init__(lang_vars, token_cls)
         self._type_fdist: CounterType[str] = Counter()
         self._num_period_toks: int = 0
-        self._collocation_fdist: CounterType[Tuple[str, str]] = Counter()
+        self._collocation_fdist: CounterType[tuple[str, str]] = Counter()
         self._sent_starter_fdist: CounterType[str] = Counter()
         self._sentbreak_count: int = 0
         self._finalized: bool = True
@@ -188,6 +188,12 @@ class PunktTrainer(PunktBase):
             except (ImportError, AttributeError):
                 print("Note: Install tqdm for progress bars during training.")
 
+        # Sentence-annotated text: train on the plain text, then learn break rates
+        marked_text = None
+        if self.SENTENCE_MARKER in text:
+            marked_text = text
+            text, _ = self.strip_sentence_markers(text)
+
         # Choose training method based on memory efficiency setting
         if self.MEMORY_EFFICIENT:
             if verbose:
@@ -214,8 +220,98 @@ class PunktTrainer(PunktBase):
                 preserved_count = len(self._params.abbrev_types & original_abbrevs)
                 print(f"Preserved {preserved_count} abbreviations")
 
+        if marked_text is not None:
+            counts = self.learn_break_rates(marked_text)
+            if verbose:
+                print(f"Learned break counts for {len(counts)} abbreviations")
+
         if finalize:
             self.finalize_training(verbose)
+
+    @classmethod
+    def strip_sentence_markers(cls, text: str) -> tuple[str, set[int]]:
+        """
+        Remove sentence and paragraph markers from annotated text.
+
+        Paragraph markers become blank lines. Each sentence marker records a boundary
+        at the end of the preceding text, ignoring trailing whitespace; a marker at
+        the very end of the text records nothing.
+
+        Args:
+            text: Text annotated with ``SENTENCE_MARKER`` / ``PARAGRAPH_MARKER``
+
+        Returns:
+            The plain text and the set of character offsets where sentences end
+        """
+        parts = text.replace(cls.PARAGRAPH_MARKER, "\n\n").split(cls.SENTENCE_MARKER)
+        boundaries: set[int] = set()
+        length = 0
+        last_end = 0
+        for i, part in enumerate(parts):
+            length += len(part)
+            stripped = part.rstrip()
+            if stripped:
+                last_end = length - (len(part) - len(stripped))
+            if i < len(parts) - 1 and last_end:
+                boundaries.add(last_end)
+        plain = "".join(parts)
+        boundaries.discard(len(plain.rstrip()))
+        return plain, boundaries
+
+    def learn_break_rates(self, texts: str | Iterable[str]) -> dict[str, tuple[int, int]]:
+        """
+        Count how often each known abbreviation before a capitalized word ends a sentence.
+
+        For every token the tokenizer would treat as an abbreviation (initials
+        excluded) that is followed by a capitalized word on the same paragraph, the
+        count of such occurrences and the count that are annotated sentence
+        boundaries are added to ``PunktParameters.abbrev_break_rates``. Call this
+        after the abbreviation set is final, e.g. after ``train()``; ``train()``
+        calls it automatically for text containing ``SENTENCE_MARKER``.
+
+        Args:
+            texts: One or more texts annotated with ``SENTENCE_MARKER`` (and
+                optionally ``PARAGRAPH_MARKER``)
+
+        Returns:
+            The counts added by this call, as ``{type: (followed_by_capital, breaks)}``
+        """
+        if isinstance(texts, str):
+            texts = [texts]
+        pattern = self._lang_vars.word_tokenize_pattern
+        make = self._Token
+        counts: dict[str, list[int]] = {}
+        for marked in texts:
+            text, boundaries = self.strip_sentence_markers(marked)
+            if "." not in text:
+                continue
+            prev: tuple[str, int] | None = None
+            offset = 0
+            parastart = False
+            for line in text.split("\n"):
+                if not line.strip():
+                    parastart = True
+                    offset += len(line) + 1
+                    continue
+                first = True
+                for match in pattern.finditer(line):
+                    token = make(match.group(1), parastart=parastart and first, linestart=first)
+                    first = False
+                    if prev is not None:
+                        if token.first_upper and not token.parastart:
+                            entry = counts.setdefault(prev[0], [0, 0])
+                            entry[0] += 1
+                            if prev[1] in boundaries:
+                                entry[1] += 1
+                        prev = None
+                    self._first_pass_annotation(token)
+                    if token.abbr and token.period_final and not token.is_initial:
+                        prev = (token.type_no_period, offset + match.end())
+                parastart = False
+                offset += len(line) + 1
+        learned = {typ: (n, b) for typ, (n, b) in counts.items()}
+        self._params.update_abbrev_break_rates(learned)
+        return learned
 
     def train_batches(self, text_iterator, verbose: bool = False, finalize: bool = True) -> None:
         """
@@ -350,9 +446,12 @@ class PunktTrainer(PunktBase):
             if token.period_final:
                 self._num_period_toks += 1
 
-            # Periodically prune the frequency distributions to save memory
-            if self._token_count % self.PRUNE_INTERVAL == 0:
-                self._prune_distributions()
+        # Prune once the counting pass is complete. Pruning while counting deleted
+        # any type that stayed rare within a single interval, so its count could
+        # never accumulate and the frequency distribution was corrupted. Corpora
+        # smaller than one interval are never pruned, as before.
+        if self._token_count >= self.PRUNE_INTERVAL:
+            self._prune_distributions()
 
         if verbose:
             print(f"Processed {token_count} tokens with {len(unique_types)} unique types.")
@@ -430,7 +529,7 @@ class PunktTrainer(PunktBase):
         if verbose:
             print(f"Processed {chunk_count} chunks of tokens.")
 
-    def _process_token_chunk(self, tokens: List[PunktToken], verbose: bool) -> None:
+    def _process_token_chunk(self, tokens: list[PunktToken], verbose: bool) -> None:
         """
         Process a chunk of tokens for orthographic data, collocations, and sentence starters.
 
@@ -508,7 +607,7 @@ class PunktTrainer(PunktBase):
             for starter in rare_starters:
                 del self._sent_starter_fdist[starter]
 
-    def _train_tokens(self, tokens: List[PunktToken], verbose: bool) -> None:
+    def _train_tokens(self, tokens: list[PunktToken], verbose: bool) -> None:
         """
         Train on a list of tokens.
 
@@ -538,15 +637,14 @@ class PunktTrainer(PunktBase):
             if token.period_final:
                 self._num_period_toks += 1
 
-            # Increment token counter for pruning
             self._token_count += 1
 
-            # Periodically prune frequency distributions if memory efficiency is enabled
-            if self.MEMORY_EFFICIENT and self._token_count % self.PRUNE_INTERVAL == 0:
-                self._prune_distributions()
-
-        # Filter types by frequency if memory efficiency is enabled
+        # Filter types by frequency if memory efficiency is enabled. Pruning happens
+        # only after the counting pass, so rare types are dropped based on their
+        # true counts rather than on partial counts within a pruning interval.
         if self.MEMORY_EFFICIENT:
+            if self._token_count >= self.PRUNE_INTERVAL:
+                self._prune_distributions()
             unique_types = {
                 token.type
                 for token in tokens
@@ -661,7 +759,7 @@ class PunktTrainer(PunktBase):
         if self.MEMORY_EFFICIENT:
             self._prune_distributions()
 
-    def _reclassify_abbrev_types(self, types: Set[str]) -> Iterator[Tuple[str, float, bool]]:
+    def _reclassify_abbrev_types(self, types: set[str]) -> Iterator[tuple[str, float, bool]]:
         """
         Reevaluate which token types should be classified as abbreviations.
 
@@ -671,6 +769,10 @@ class PunktTrainer(PunktBase):
         Yields:
             Tuples of (token_type, score, is_add) where is_add indicates whether to add or remove
         """
+        # Total token count, computed once: summing the distribution inside the loop
+        # made this step quadratic in the vocabulary size.
+        total = sum(self._type_fdist.values())
+
         for typ in types:
             if not _RE_NON_PUNCT.search(typ) or typ == "##number##":
                 continue
@@ -724,7 +826,6 @@ class PunktTrainer(PunktBase):
             num_nonperiods = len(candidate) - candidate.count(".") + 1
             count_with_period = self._type_fdist[candidate + "."]
             count_without_period = self._type_fdist[candidate]
-            total = sum(self._type_fdist.values())
 
             # Check existing abbreviation status
             is_existing_abbrev = candidate in self._params.abbrev_types
@@ -776,7 +877,7 @@ class PunktTrainer(PunktBase):
 
             yield candidate, score, is_add
 
-    def _get_orthography_data(self, tokens: List[PunktToken]) -> None:
+    def _get_orthography_data(self, tokens: list[PunktToken]) -> None:
         """
         Gather orthographic context data from tokens.
 
@@ -989,7 +1090,7 @@ class PunktTrainer(PunktBase):
 
         self._finalized = True
 
-    def _find_collocations(self) -> Iterator[Tuple[Tuple[str, str], float]]:
+    def _find_collocations(self) -> Iterator[tuple[tuple[str, str], float]]:
         """
         Find collocations in the training data.
 
@@ -1013,7 +1114,7 @@ class PunktTrainer(PunktBase):
                 if ll >= self.COLLOCATION and (total / typ1_count > typ2_count / col_count):
                     yield (typ1, typ2), ll
 
-    def _find_sent_starters(self) -> Iterator[Tuple[str, float]]:
+    def _find_sent_starters(self) -> Iterator[tuple[str, float]]:
         """
         Find sentence starters in the training data.
 
@@ -1034,7 +1135,7 @@ class PunktTrainer(PunktBase):
 
     def _get_version(self) -> str:
         """Get the model format version."""
-        return "1.0.0"
+        return "1.1.0"
 
     def _get_nupunkt_version(self) -> str:
         """Get the nupunkt library version used to create this model."""
@@ -1045,7 +1146,7 @@ class PunktTrainer(PunktBase):
         except ImportError:
             return "unknown"
 
-    def to_json(self) -> Dict[str, Any]:
+    def to_json(self) -> dict[str, Any]:
         """
         Convert trainer configuration and parameters to a JSON-serializable dictionary.
 
@@ -1086,9 +1187,9 @@ class PunktTrainer(PunktBase):
     @classmethod
     def from_json(
         cls,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         lang_vars: PunktLanguageVars | None = None,
-        token_cls: Type[PunktToken] | None = None,
+        token_cls: type[PunktToken] | None = None,
     ) -> "PunktTrainer":
         """
         Create a PunktTrainer instance from a JSON dictionary.
@@ -1166,7 +1267,7 @@ class PunktTrainer(PunktBase):
         return trainer
 
     def save(
-        self, file_path: Union[str, Path], compress: bool = True, compression_level: int = 1
+        self, file_path: str | Path, compress: bool = True, compression_level: int = 1
     ) -> None:
         """
         Save trainer configuration and parameters to a JSON file, optionally with LZMA compression.
@@ -1185,9 +1286,9 @@ class PunktTrainer(PunktBase):
     @classmethod
     def load(
         cls,
-        file_path: Union[str, Path],
+        file_path: str | Path,
         lang_vars: PunktLanguageVars | None = None,
-        token_cls: Type[PunktToken] | None = None,
+        token_cls: type[PunktToken] | None = None,
     ) -> "PunktTrainer":
         """
         Load trainer configuration and parameters from a JSON file, which may be compressed with LZMA.

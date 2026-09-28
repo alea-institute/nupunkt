@@ -9,7 +9,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable
 
 from nupunkt.evaluation.dataset import TestCase, load_evaluation_data
 from nupunkt.evaluation.metrics import (
@@ -26,13 +26,13 @@ class ModelEvaluation:
     model_name: str
     dataset_name: str
     metrics: EvaluationMetrics
-    errors: List[Dict[str, Any]]
-    config: Dict[str, Any] | None = None
+    errors: list[dict[str, Any]]
+    config: dict[str, Any] | None = None
 
 
 def evaluate_single_example(
     tokenizer: PunktSentenceTokenizer, test_case: TestCase
-) -> Tuple[List[str], float, Dict[str, Any] | None]:
+) -> tuple[list[str], float, dict[str, Any] | None]:
     """
     Evaluate tokenizer on a single example.
 
@@ -194,12 +194,12 @@ def evaluate_model(
 
 
 def compare_models(
-    model_paths: List[str | Path],
+    model_paths: list[str | Path],
     dataset_path: str | Path,
     output_path: str | Path | None = None,
     max_samples: int | None = None,
     verbose: bool = True,
-) -> List[ModelEvaluation]:
+) -> list[ModelEvaluation]:
     """
     Compare multiple models on the same dataset.
 
@@ -238,10 +238,10 @@ def compare_models(
 def run_benchmark(
     tokenizer_factory: Callable[[], PunktSentenceTokenizer],
     benchmark_name: str,
-    dataset_paths: List[str | Path],
+    dataset_paths: list[str | Path],
     output_dir: str | Path | None = None,
     max_samples: int | None = None,
-) -> Dict[str, ModelEvaluation]:
+) -> dict[str, ModelEvaluation]:
     """
     Run a comprehensive benchmark across multiple datasets.
 
@@ -302,7 +302,7 @@ def save_evaluation_results(evaluation: ModelEvaluation, output_path: str | Path
         json.dump(data, f, indent=2)
 
 
-def save_comparison_results(evaluations: List[ModelEvaluation], output_path: str | Path) -> None:
+def save_comparison_results(evaluations: list[ModelEvaluation], output_path: str | Path) -> None:
     """Save model comparison results."""
     output_path = Path(output_path)
 
@@ -322,7 +322,7 @@ def save_comparison_results(evaluations: List[ModelEvaluation], output_path: str
         json.dump(data, f, indent=2)
 
 
-def print_model_comparison(evaluations: List[ModelEvaluation]) -> None:
+def print_model_comparison(evaluations: list[ModelEvaluation]) -> None:
     """Print a formatted comparison of model evaluations."""
     print("\n" + "=" * 80)
     print("MODEL COMPARISON")

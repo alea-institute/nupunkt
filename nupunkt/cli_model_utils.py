@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from nupunkt.utils.compression import load_compressed_json
 from nupunkt.utils.paths import (
@@ -13,7 +13,7 @@ from nupunkt.utils.paths import (
 )
 
 
-def list_models() -> List[Tuple[str, Path, Dict[str, Any]]]:
+def list_models() -> list[tuple[str, Path, dict[str, Any]]]:
     """
     List all available models.
 
@@ -53,7 +53,7 @@ def list_models() -> List[Tuple[str, Path, Dict[str, Any]]]:
     return sorted(models, key=lambda x: x[0])
 
 
-def _get_model_metadata(model_path: Path) -> Dict[str, Any]:
+def _get_model_metadata(model_path: Path) -> dict[str, Any]:
     """Extract metadata from a model file."""
     try:
         data = load_compressed_json(model_path)

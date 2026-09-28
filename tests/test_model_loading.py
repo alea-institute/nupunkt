@@ -73,7 +73,7 @@ class TestModelLoading:
                     "sent_starters": {},
                     "ortho_context": {},
                 },
-                "nupunkt_version": "0.6.0",
+                "nupunkt_version": "0.7.0",
             }
             model_path.write_text(json.dumps(model_data))
 

@@ -7,7 +7,6 @@ extended for different languages.
 """
 
 import re
-from typing import List
 
 
 class PunktLanguageVars:
@@ -22,7 +21,10 @@ class PunktLanguageVars:
     # Use frozenset for O(1) membership testing instead of tuple
     sent_end_chars: frozenset = frozenset((".", "?", "!"))
     internal_punctuation: str = ",:;"
-    re_boundary_realignment: re.Pattern = re.compile(r'[\'"\)\]}]+?(?:\s+|(?=--)|$)', re.MULTILINE)
+    # Closing quotes/brackets (ASCII and Unicode) and markdown emphasis that trail a sentence end
+    re_boundary_realignment: re.Pattern = re.compile(
+        r'[\'"\)\]}\u201d\u2019\u00bb*]+?(?:\s+|(?=--)|$)', re.MULTILINE
+    )
     _re_word_start: str = r"[^\(\"\`{\[:;&\#\*@\)}\]\-,]"
     _re_multi_char_punct: str = r"(?:\-{2,}|\.{2,}|(?:\.\s+){1,}\.|\u2026)"
 
@@ -51,7 +53,9 @@ class PunktLanguageVars:
         """
         # Exclude characters that can never start a word
         nonword = "".join(set(self.sent_end_chars) - {"."})
-        return rf"(?:[)\";}}\]\*:@\'\({{[\s{re.escape(nonword)}])"
+        # Apostrophes only count when not followed by a letter, so "aff'd." and
+        # "gov’t." stay single tokens while closing quotes still end a word.
+        return rf"(?:[)\";}}\]\*:@\({{[\s{re.escape(nonword)}\u201d\u00bb]|['\u2019](?![^\W\d_]))"
 
     @property
     def word_tokenize_pattern(self) -> re.Pattern:
@@ -79,7 +83,7 @@ class PunktLanguageVars:
             self._re_word_tokenizer = re.compile(pattern, re.UNICODE | re.VERBOSE)
         return self._re_word_tokenizer
 
-    def word_tokenize(self, text: str) -> List[str]:
+    def word_tokenize(self, text: str) -> list[str]:
         """
         Tokenize text into words using the word_tokenize_pattern.
 
@@ -101,7 +105,7 @@ class PunktLanguageVars:
         """
         if self._re_period_context is None:
             pattern = rf"""
-                {self._re_sent_end_chars}
+                (?:{self._re_sent_end_chars}|\u2026)
                 (?=(?P<after_tok>
                     {self._re_non_word_chars}|
                     \s+(?P<next_tok>\S+)

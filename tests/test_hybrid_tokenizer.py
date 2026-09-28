@@ -393,7 +393,7 @@ class TestIntegrationWithBase:
         # It may not always exceed standard performance on all edge cases
         standard_accuracy = standard_correct / standard_total
         improved_accuracy = improved_correct / improved_total
-        
+
         # Allow up to 10% lower accuracy since the challenge set is designed to be difficult
         assert improved_accuracy >= standard_accuracy * 0.9, (
             f"Adaptive accuracy {improved_accuracy:.2%} is too far below "

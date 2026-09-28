@@ -7,7 +7,6 @@ in the Punkt algorithm and calculates various derived properties.
 
 import re
 from functools import lru_cache
-from typing import Dict, Tuple
 
 # Compiled regex patterns for better performance
 _RE_NON_WORD_DOT = re.compile(r"[^\w.]")
@@ -109,17 +108,62 @@ def _get_type_no_period(type_str: str) -> str:
     return type_str[:-1] if type_str.endswith(".") and len(type_str) > 1 else type_str
 
 
-# Module-level cache for PunktToken instances
-_token_instance_cache: Dict[Tuple[str, bool, bool], "PunktToken"] = {}
-_TOKEN_CACHE_SIZE = 16000  # Increased 8x from 2000
+# Memo of immutable, per-string derived fields:
+# tok -> (period_final, type, valid_abbrev_candidate, first_upper, first_lower)
+#
+# Only immutable data is memoized. Every call to the factory (or the constructor)
+# returns a *fresh* PunktToken, because the annotation passes mutate ``sentbreak``,
+# ``abbr`` and ``ellipsis`` in place. Sharing instances between positions or calls
+# made tokenization order-dependent (see tests/test_determinism.py).
+_derived_cache: dict[str, tuple[bool, str, bool, bool, bool]] = {}
+_DERIVED_CACHE_SIZE = 65536
 
-# Pre-created singletons for common punctuation
-_PUNCT_SINGLETONS: Dict[str, "PunktToken"] = {}
+
+def _derive(tok: str) -> tuple[bool, str, bool, bool, bool]:
+    """Compute the immutable derived fields for a token string."""
+    period_final = tok.endswith(".")
+    typ = _get_token_type(tok)
+    first_upper = bool(tok) and tok[0].isupper()
+    first_lower = bool(tok) and tok[0].islower()
+
+    valid_abbrev_candidate = False
+    if period_final and typ != "##number##":
+        # A candidate contains only letters, digits, periods, apostrophes and "&", has at least one
+        # letter and no more digits than letters.
+        alpha_count = 0
+        digit_count = 0
+        valid = True
+        for c in tok:
+            if c in ".'\u2019&":
+                continue
+            if c.isalpha():
+                alpha_count += 1
+            elif c.isdigit():
+                digit_count += 1
+            else:
+                valid = False
+                break
+        valid_abbrev_candidate = valid and alpha_count > 0 and alpha_count >= digit_count
+
+    return (period_final, typ, valid_abbrev_candidate, first_upper, first_lower)
+
+
+def _derived(tok: str) -> tuple[bool, str, bool, bool, bool]:
+    """Return the memoized derived fields for a token string."""
+    d = _derived_cache.get(tok)
+    if d is None:
+        d = _derive(tok)
+        if len(_derived_cache) < _DERIVED_CACHE_SIZE:
+            _derived_cache[tok] = d
+    return d
 
 
 def create_punkt_token(tok: str, parastart: bool = False, linestart: bool = False) -> "PunktToken":
     """
-    Factory function to create PunktToken instances with caching.
+    Factory function to create a new PunktToken instance.
+
+    Immutable per-string properties are memoized internally, so repeated tokens are
+    cheap to construct, but the returned instance is never shared.
 
     Args:
         tok: Token text
@@ -127,27 +171,8 @@ def create_punkt_token(tok: str, parastart: bool = False, linestart: bool = Fals
         linestart: Whether the token starts a line
 
     Returns:
-        A new or cached PunktToken instance
+        A new PunktToken instance
     """
-    # Fast path for single-character punctuation (except period which needs analysis)
-    if len(tok) == 1 and tok in _PUNCT_SINGLETONS and not parastart and not linestart:
-        return _PUNCT_SINGLETONS[tok]
-    
-    # Only cache smaller tokens (most common case)
-    if len(tok) < 15:
-        cache_key = (tok, parastart, linestart)
-        token = _token_instance_cache.get(cache_key)
-        if token is not None:
-            return token
-
-        token = PunktToken(tok, parastart, linestart)
-
-        # Add to cache if not full
-        if len(_token_instance_cache) < _TOKEN_CACHE_SIZE:
-            _token_instance_cache[cache_key] = token
-        return token
-
-    # For longer tokens, just create a new instance
     return PunktToken(tok, parastart, linestart)
 
 
@@ -175,16 +200,12 @@ class PunktToken:
         "_first_upper",
         "_first_lower",
         "_type_no_period",
-        "_type_no_sentperiod",
         "_is_ellipsis",
         "_is_number",
         "_is_initial",
         "_is_alpha",
         "_is_non_punct",
     )
-
-    # Define allowed characters for fast punctuation check (alphanumeric + period)
-    _ALLOWED_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.")
 
     def __init__(self, tok: str, parastart: bool = False, linestart: bool = False) -> None:
         """
@@ -195,7 +216,6 @@ class PunktToken:
             parastart: Whether this token starts a paragraph
             linestart: Whether this token starts a line
         """
-        # Initialize base attributes
         self.tok = tok
         self.parastart = parastart
         self.linestart = linestart
@@ -203,54 +223,21 @@ class PunktToken:
         self.abbr = False
         self.ellipsis = False
 
-        # Initialize computed attributes
-        self.period_final = tok.endswith(".")
-        self.type = _get_token_type(tok)
+        (
+            self.period_final,
+            self.type,
+            self.valid_abbrev_candidate,
+            self._first_upper,
+            self._first_lower,
+        ) = _derived(tok)
 
-        # Pre-compute frequently accessed properties
-        tok_len = len(tok)
-        self._first_upper = tok_len > 0 and tok[0].isupper()
-        self._first_lower = tok_len > 0 and tok[0].islower()
-
-        # Initialize lazily computed properties (will be set on first access)
+        # Lazily computed properties (set on first access)
         self._type_no_period = None
-        self._type_no_sentperiod = None
         self._is_ellipsis = None
         self._is_number = None
         self._is_initial = None
         self._is_alpha = None
         self._is_non_punct = None
-
-        # Single pass to check characters and count types
-        has_invalid_char = False
-        alpha_count = 0
-        digit_count = 0
-        
-        if self.period_final:
-            # Single pass through the token to gather all info
-            for c in tok:
-                if c == ".":
-                    continue  # Skip periods
-                elif c.isalpha():
-                    alpha_count += 1
-                elif c.isdigit():
-                    digit_count += 1
-                elif c not in self._ALLOWED_CHARS:
-                    has_invalid_char = True
-                    # Don't break - we still need counts for valid_abbrev_candidate
-            
-            self.valid_abbrev_candidate = (
-                not has_invalid_char and 
-                self.type != "##number##" and 
-                alpha_count >= digit_count and 
-                alpha_count > 0
-            )
-        else:
-            self.valid_abbrev_candidate = False
-
-        # If token has a period but isn't valid candidate, reset abbr flag
-        if self.period_final and not self.valid_abbrev_candidate:
-            self.abbr = False
 
     @property
     def type_no_period(self) -> str:
@@ -262,9 +249,7 @@ class PunktToken:
     @property
     def type_no_sentperiod(self) -> str:
         """Get the token type without a sentence-final period."""
-        if self._type_no_sentperiod is None:
-            self._type_no_sentperiod = self.type_no_period if self.sentbreak else self.type
-        return self._type_no_sentperiod
+        return self.type_no_period if self.sentbreak else self.type
 
     @property
     def first_upper(self) -> bool:
@@ -343,8 +328,3 @@ class PunktToken:
             f"linestart={self.linestart}, sentbreak={self.sentbreak}, "
             f"abbr={self.abbr}, ellipsis={self.ellipsis})"
         )
-
-
-# Initialize punctuation singletons (excluding period which needs special handling)
-for punct in ',;:()[]{}"\'-–—/\\':
-    _PUNCT_SINGLETONS[punct] = PunktToken(punct, False, False)

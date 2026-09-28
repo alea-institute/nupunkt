@@ -5,7 +5,6 @@ This module provides constants used in the Punkt algorithm,
 including orthographic context and cache configuration.
 """
 
-from typing import Dict, Tuple
 
 # -------------------------------------------------------------------
 # Orthographic Context Constants
@@ -24,7 +23,7 @@ ORTHO_UC = ORTHO_BEG_UC | ORTHO_MID_UC | ORTHO_UNK_UC  # Any uppercase
 ORTHO_LC = ORTHO_BEG_LC | ORTHO_MID_LC | ORTHO_UNK_LC  # Any lowercase
 
 # Mapping from (position, case) to flag
-ORTHO_MAP: Dict[Tuple[str, str], int] = {
+ORTHO_MAP: dict[tuple[str, str], int] = {
     ("initial", "upper"): ORTHO_BEG_UC,
     ("internal", "upper"): ORTHO_MID_UC,
     ("unknown", "upper"): ORTHO_UNK_UC,

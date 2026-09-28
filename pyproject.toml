@@ -1,6 +1,6 @@
 [project]
 name = "nupunkt"
-version = "0.6.0"
+version = "0.7.0"
 description = "Next-generation Punkt sentence and paragraph boundary detection with zero dependencies"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,6 +31,7 @@ classifiers = [
     "Topic :: Text Processing :: Linguistic",
     "Natural Language :: English",
     "Operating System :: OS Independent",
+    "Typing :: Typed",
 ]
 dependencies = []
 
@@ -49,9 +50,8 @@ nupunkt = "nupunkt.cli:main"
 dev = [
     "tqdm==4.66.1",
     "pytest==8.3.2",
-    "mypy==1.11.2",
-    "ruff==0.6.5",
-    "black==24.8.0",
+    "ruff==0.15.4",
+    "ty==0.0.19",
     "pytest-benchmark==5.1.0",
     "pytest-cov==6.0.0",
     "memory-profiler>=0.61.0",
@@ -87,6 +87,7 @@ packages = [
 ]
 
 [tool.setuptools.package-data]
+"nupunkt" = ["py.typed", "data/*.json"]
 "nupunkt.models" = ["*.json.gz"]
 
 [tool.ruff]
@@ -115,8 +116,6 @@ ignore = [
     "N803",  # argument name should be lowercase
     "N806",  # variable in function should be lowercase
     "N815",  # variable in class scope should not be mixedCase
-    "UP006", # use tuple instead of Tuple - maintain compatibility with Python 3.8
-    "UP007", # use X | Y for type annotations - maintain compatibility with Python < 3.10
     "UP035", # deprecated import
     "PTH123", # use open() instead of Path.open()
     "SIM105", # use contextlib.suppress(Exception) instead of try/except pass
@@ -127,12 +126,6 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 # Allow autofix for all enabled rules (when `--fix`) is provided
 fixable = ["ALL"]
-
-[tool.black]
-line-length = 100
-target-version = ["py311"]
-
-# This is now in mypy.ini, which has more detailed configuration
 
 # Testing config
 [tool.pytest.ini_options]
