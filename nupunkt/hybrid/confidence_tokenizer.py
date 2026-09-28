@@ -7,7 +7,7 @@ core principles (zero dependencies, deterministic behavior).
 """
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import TypedDict
 
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
@@ -19,7 +19,7 @@ class ConfidenceScore:
     """Container for confidence scoring components."""
 
     total: float
-    components: Dict[str, float]
+    components: dict[str, float]
     decision_threshold: float
     is_boundary: bool
 
@@ -41,7 +41,7 @@ class ConfidenceCalculator:
 
     def calculate_confidence(
         self, token: PunktToken, next_token: PunktToken | None = None
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Calculate individual confidence components."""
         scores = {}
 
@@ -171,7 +171,7 @@ class ConfidenceCalculator:
 
         return max(0.0, min(1.0, score))  # Clamp to [0, 1]
 
-    def get_total_confidence(self, scores: Dict[str, float]) -> float:
+    def get_total_confidence(self, scores: dict[str, float]) -> float:
         """Calculate weighted total confidence score."""
         total = sum(
             scores.get(component, 0.0) * self.weights.get(component, 0.0)
@@ -195,7 +195,7 @@ class ConfidenceSentenceTokenizer(PunktSentenceTokenizer):
         self,
         params: PunktParameters | None = None,
         confidence_threshold: float = 0.5,
-        component_weights: Dict[str, float] | None = None,
+        component_weights: dict[str, float] | None = None,
         debug: bool = False,
     ):
         """
@@ -255,7 +255,7 @@ class ConfidenceSentenceTokenizer(PunktSentenceTokenizer):
         elif not is_boundary:
             token1.sentbreak = False
 
-    def tokenize_with_confidence(self, text: str) -> List[Tuple[str, ConfidenceScore]]:
+    def tokenize_with_confidence(self, text: str) -> list[tuple[str, ConfidenceScore]]:
         """
         Tokenize text and return sentences with confidence scores.
 
@@ -295,8 +295,15 @@ class ConfidenceSentenceTokenizer(PunktSentenceTokenizer):
         self.confidence_calc.weights[component] = weight
 
 
+class _DomainPreset(TypedDict):
+    """Per-domain preset for :func:`create_domain_tokenizer`."""
+
+    confidence_threshold: float
+    component_weights: dict[str, float]
+
+
 # Preset configurations for different domains
-DOMAIN_PRESETS = {
+DOMAIN_PRESETS: dict[str, _DomainPreset] = {
     "general": {
         "confidence_threshold": 0.5,
         "component_weights": {

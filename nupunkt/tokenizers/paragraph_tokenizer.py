@@ -5,11 +5,12 @@ This module provides tokenizer classes for paragraph boundary detection.
 """
 
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import List, Tuple, Type, Union
 
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.tokens import PunktToken
+from nupunkt.segmentation import Segment, SegmenterMixin, tight
 from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 
 # Precompiled regex pattern for two or more consecutive newlines
@@ -17,7 +18,7 @@ from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 PARAGRAPH_BREAK_PATTERN = re.compile(r"\n\s*\n+")
 
 
-class PunktParagraphTokenizer:
+class PunktParagraphTokenizer(SegmenterMixin):
     """
     Paragraph tokenizer using sentence boundaries and newlines.
 
@@ -29,7 +30,7 @@ class PunktParagraphTokenizer:
         self,
         sentence_tokenizer: PunktSentenceTokenizer | None = None,
         lang_vars: PunktLanguageVars | None = None,
-        token_cls: Type[PunktToken] = PunktToken,
+        token_cls: type[PunktToken] = PunktToken,
     ) -> None:
         """
         Initialize the paragraph tokenizer.
@@ -62,7 +63,17 @@ class PunktParagraphTokenizer:
             PunktParagraphTokenizer._default_model = load_default_model()
         return PunktParagraphTokenizer._default_model
 
-    def tokenize(self, text: str) -> List[str]:
+    def iter_segments(self, text: str) -> Iterator[Segment]:
+        """
+        Yield each paragraph of ``text`` with its tight character span.
+
+        Unlike ``tokenize_with_spans``, whose spans are contiguous and include the
+        blank lines between paragraphs, these spans exclude surrounding whitespace.
+        """
+        raw = (Segment(para, start, end) for para, (start, end) in self.tokenize_with_spans(text))
+        yield from tight(raw, text)
+
+    def tokenize(self, text: str) -> list[str]:
         """
         Tokenize text into paragraphs.
 
@@ -74,7 +85,7 @@ class PunktParagraphTokenizer:
         """
         return [paragraph for paragraph, _ in self.tokenize_with_spans(text)]
 
-    def tokenize_with_spans(self, text: str) -> List[Tuple[str, Tuple[int, int]]]:
+    def tokenize_with_spans(self, text: str) -> list[tuple[str, tuple[int, int]]]:
         """
         Tokenize text into paragraphs with their character spans.
 
@@ -136,7 +147,7 @@ class PunktParagraphTokenizer:
 
         return result
 
-    def span_tokenize(self, text: str) -> List[Tuple[int, int]]:
+    def span_tokenize(self, text: str) -> list[tuple[int, int]]:
         """
         Tokenize text into paragraph spans.
 
@@ -153,7 +164,7 @@ class PunktParagraphTokenizer:
         return [span for _, span in self.tokenize_with_spans(text)]
 
     def save(
-        self, file_path: Union[str, Path], compress: bool = True, compression_level: int = 1
+        self, file_path: str | Path, compress: bool = True, compression_level: int = 1
     ) -> None:
         """
         Save the tokenizer to a file.
@@ -170,9 +181,9 @@ class PunktParagraphTokenizer:
     @classmethod
     def load(
         cls,
-        file_path: Union[str, Path],
+        file_path: str | Path,
         lang_vars: PunktLanguageVars | None = None,
-        token_cls: Type[PunktToken] | None = None,
+        token_cls: type[PunktToken] | None = None,
     ) -> "PunktParagraphTokenizer":
         """
         Load a PunktParagraphTokenizer from a file.

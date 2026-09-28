@@ -6,12 +6,13 @@ with sensible defaults and domain-specific presets.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, final
 
 if TYPE_CHECKING:
     from nupunkt.trainers.base_trainer import PunktTrainer
 
 
+@final
 @dataclass
 class PunktHyperparameters:
     """
@@ -113,14 +114,14 @@ class PunktHyperparameters:
         )
 
     @classmethod
-    def from_dict(cls, config: Dict[str, Any]) -> "PunktHyperparameters":
+    def from_dict(cls, config: dict[str, Any]) -> "PunktHyperparameters":
         """Create hyperparameters from a dictionary."""
         # Filter to only valid fields
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
         filtered_config = {k: v for k, v in config.items() if k in valid_fields}
         return cls(**filtered_config)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert hyperparameters to dictionary."""
         return {
             "abbrev_threshold": self.abbrev_threshold,

@@ -13,11 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import nupunkt
-from scripts.profiling.profiling_utils import (
-    create_base_parser,
-    run_profiling,
-    ProfilingResult
-)
+from scripts.profiling.profiling_utils import ProfilingResult, create_base_parser
 
 
 def print_tokenization_stats(result: ProfilingResult):
@@ -27,7 +23,7 @@ def print_tokenization_stats(result: ProfilingResult):
     avg_chars_per_text = result.total_chars / result.sample_count
     est_sents_per_text = avg_chars_per_text / 50  # Rough estimate: 50 chars/sentence
     sents_per_second = (result.sample_count * est_sents_per_text) / result.total_time
-    
+
     print(f"Estimated sentences/sec:   {sents_per_second:,.0f}")
     print(f"Avg chars/text:            {avg_chars_per_text:,.0f}")
 
@@ -36,54 +32,48 @@ def main():
     """Main profiling function."""
     import cProfile
     import pstats
-    
-    parser = create_base_parser(
-        "Profile nupunkt.sent_tokenize performance"
-    )
-    
+
+    parser = create_base_parser("Profile nupunkt.sent_tokenize performance")
+
     # Add sent_tokenize specific arguments
     parser.add_argument(
-        '--model',
-        type=str,
-        default='default',
-        help='Model to use for tokenization'
+        "--model", type=str, default="default", help="Model to use for tokenization"
     )
-    
+
     parser.add_argument(
-        '--no-cache',
-        action='store_true',
-        help='Disable model caching (force reload each time)'
+        "--no-cache", action="store_true", help="Disable model caching (force reload each time)"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Clear cache if requested
     if args.no_cache:
         nupunkt.load.cache_clear()
         nupunkt._get_default_model.cache_clear()
-    
+
     # Load data
     from scripts.profiling.profiling_utils import load_jsonl_texts
+
     print(f"Loading data from: {args.data}")
     texts = list(load_jsonl_texts(args.data, limit=args.limit))
     print(f"Loaded {len(texts)} texts\n")
-    
+
     # Run cProfile
     profiler = cProfile.Profile()
     profiler.enable()
-    
+
     for text in texts:
         _ = nupunkt.sent_tokenize(text, model=args.model)
-    
+
     profiler.disable()
-    
+
     # Print stats directly
     print("cProfile Results:")
-    print("="*80)
+    print("=" * 80)
     stats = pstats.Stats(profiler)
-    stats.sort_stats('cumulative')
+    stats.sort_stats("cumulative")
     stats.print_stats(args.top)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

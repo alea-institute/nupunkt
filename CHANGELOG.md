@@ -5,6 +5,124 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-27
+
+A correctness and performance release. Tokenization is deterministic again, the bundled
+model is 25 KB instead of 9.2 MB, the tokenizer is several times faster, and there is a
+single segmentation interface for words, sentences and paragraphs. All 0.6 function and
+method names keep working with their previous behaviour.
+
+### Highlights
+
+| | 0.6.0 | 0.7.0 |
+|---|---|---|
+| Legal gold set boundary F1 (precision) | 0.722 (0.776) | 0.782 (0.902) |
+| Bundled model file | 9.2 MB | 25 KB |
+| First call (model load) | 1.3 s | ~2 ms |
+| Resident memory after load | ~320 MB | ~19 MB |
+| Throughput, warm, 4 MB legal corpus | 13 MB/s | 60+ MB/s |
+
+### Added
+- **Standard segmentation interface** (`nupunkt.segmentation`). Words, sentences and
+  paragraphs share one shape: `words` / `word_spans` / `word_segments`, `sentences` /
+  `sentence_spans` / `sentence_segments`, `paragraphs` / `paragraph_spans` /
+  `paragraph_segments`, plus `segmenter(level, ...)` for a reusable object with generator
+  forms (`iter_segments`, `iter_texts`, `iter_spans`). `Segment` is a `(text, start, end)`
+  named tuple with a `.span` property. Spans are tight (`text[start:end]` is exactly the
+  segment, no surrounding whitespace, never overlapping); `contiguous(segments, text)`
+  derives gap-free coverage. `SegmenterMixin` derives the six methods from a single
+  `iter_segments`, and `PunktSentenceTokenizer`, `AdaptiveTokenizer`,
+  `PunktParagraphTokenizer` and the new `WordSegmenter` all implement it.
+- **One-pass hierarchical segmentation**: `nupunkt.segment(text, model="default",
+  adaptive=False)` returns a `Document` (`paragraphs` -> `sentences` -> `words`) from a
+  single sentence pass; words are computed lazily per sentence. `Paragraph` and `Sentence`
+  are `Segment` subclasses, the flat `Document.sentences` / `.words` equal the per-level
+  functions, and `Document.to_dict()` gives a JSON-ready tree.
+- **Per-abbreviation break rates.** `PunktParameters.abbrev_break_rates` records, per
+  abbreviation, how often it precedes a capitalized word and how often that position is a
+  sentence boundary. Learned from sentence-annotated text (`<|sentence|>` markers) by
+  `PunktTrainer.train()` or `PunktTrainer.learn_break_rates(texts)`;
+  `PunktTrainer.strip_sentence_markers()` converts annotated text to plain text plus
+  offsets. The tokenizer breaks after an abbreviation seen at least `BREAK_RATE_MIN_COUNT`
+  (20) times before a capitalized word when its rate is at least `BREAK_RATE_HIGH` (0.8);
+  the `BREAK_RATE_LOW` veto is off by default. The bundled model ships rates learned from
+  the Universal Dependencies English treebanks. Models without the field load and
+  tokenize exactly as before.
+- Deterministic boundary heuristics, each validated on the legal gold set and on general
+  English (UD EWT, UD GUM, Brown):
+  - Unicode closing quotes and guillemets (`” ’ »`) and markdown `*` act like ASCII closers.
+  - `…` and spaced `. . .` ellipses can end a sentence before a capitalized word.
+  - A terminator followed by closing punctuation and a lowercase word on the same line does
+    not end the sentence (`"Is it?" he asked.`); runs like `?!` and `!!!` are one terminator.
+  - Line-start list enumerators (`1.`, `(a).`, `IV.`) are never sentences on their own.
+  - Prenominal titles (`Dr.`, `Mr.`, `Gen.`, ...) before a capitalized word never end a sentence.
+  - A period-final token followed by a paragraph break and a capitalized word is a boundary.
+  - Abbreviation candidates may contain apostrophes and `&` (`aff'd.`, `gov't.`).
+  - The word after a candidate boundary is no longer truncated at its first period, so
+    `App. No. 5` sees `No.` as an abbreviation (264 fewer false positives on the gold set).
+  - Adaptive mode no longer treats a capitalized word before a closing quote as an abbreviation.
+- `PunktParameters.compact_ortho_context()` and `drop_ortho_context()`, and
+  `scripts/compact_default_model.py` (with `--drop-ortho`, `--remove`, `--drop-malformed`)
+  to export inference models.
+- `PunktSentenceTokenizer.clear_decision_cache()` for in-place parameter edits that do not
+  change any collection's size.
+- 168 new tests (`test_determinism`, `test_heuristics`, `test_segmentation`,
+  `test_document`, `test_decision_engine`, `test_break_rates`).
+
+### Changed
+- **Bundled model no longer ships an orthographic context.** Ablation showed the 891k
+  entries (97% of the file) change fewer than 0.1% of boundaries on the legal gold set and
+  on three general-English corpora (F1 within 0.0003 everywhere). Abbreviations, sentence
+  starters and collocations are unchanged. Models you train yourself keep their
+  orthographic context unless you drop it. Model format version is now `1.1.0`.
+- **Abbreviation data curated**: the plain words `Court.`, `Case.`, `Cases.`, `Trial.`,
+  `Judge.`, `Law.` and `Child.` were removed from `legal_abbreviations.json` and the bundled
+  model, along with 73 malformed entries.
+- **String-level decision engine.** Boundary decisions are computed from token strings and
+  memoized per context instead of building `PunktToken` objects for every candidate.
+  Output is identical; subclasses that override annotation hooks (such as
+  `AdaptiveTokenizer`) transparently keep the token-based path.
+- Hot-path cleanups with identical output: no per-call frozenset rebuilds, no unused
+  ellipsis scans, no string-keyed LRU caches, no per-sentence copies during realignment.
+- Default abbreviation lists are bundled in `nupunkt/data/` so
+  `train_model(use_default_abbreviations=True)` works from installed wheels.
+- Type annotations use PEP 604/585 syntax; `ty` replaces `mypy` and `ruff format`
+  replaces `black` in the dev dependencies (`mypy.ini` removed). Package declares
+  `Typing :: Typed`.
+- The `ortho_cache_size`, `sent_starter_cache_size` and `whitespace_cache_size` arguments of
+  `PunktSentenceTokenizer` are accepted but ignored.
+- `nupunkt --version` reports the package version from `nupunkt.__version__`.
+
+### Fixed
+- **Tokenization was not deterministic.** `PunktToken` instances were cached and shared
+  between positions and calls while the annotation passes mutated them, so the same input
+  could tokenize differently depending on what the process had seen before. Tokens are
+  now always fresh; only immutable per-string fields are memoized.
+- `add_abbreviation()` / `remove_abbreviation()` had no effect on models loaded from disk.
+- Tokenizers built from in-process parameters were about 12x slower than loaded models.
+- `PunktSentenceTokenizer(training_text)` raised `OSError: File name too long` for text
+  with a run of more than 255 characters without a path separator.
+- Custom `token_cls` subclasses were silently ignored.
+- `PunktTrainer`: abbreviation reclassification was quadratic in vocabulary size;
+  memory-efficient training pruned counts mid-pass and corrupted frequencies;
+  `math domain error` from the Dunning log-likelihood on inconsistent counts is guarded.
+- `scripts/profiling/profile_sent_tokenize_adaptive.py` referenced an undefined variable.
+
+### Migration notes
+- No code changes are required. `sent_tokenize`, `sent_spans`, `sent_spans_with_text`,
+  `para_tokenize`, `para_spans`, `para_spans_with_text`, the `_adaptive` variants and the
+  `tokenize` / `span_tokenize` / `tokenize_with_spans` methods keep their exact previous
+  semantics, including contiguous spans that carry surrounding whitespace. New code should
+  prefer the segmentation interface, whose spans are tight.
+- Output changes: results that depended on process history are now stable, and the
+  heuristics above change some boundaries (see the Highlights table). If you pinned
+  expected output, re-generate it.
+- The bundled model cannot be used as a starting point for continued training, because
+  it no longer carries the orthographic context. Train from text, or from a model you
+  saved yourself.
+- Models saved by 0.6.0 load unchanged. Models saved by 0.7.0 (format `1.1.0`) load in
+  0.6.0 as well; the `abbrev_break_rates` field is ignored there.
+
 ## [0.6.0] - 2025-08-04
 
 ### Added

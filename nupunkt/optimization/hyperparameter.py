@@ -11,7 +11,7 @@ import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from nupunkt.evaluation.evaluator import evaluate_on_dataset
 from nupunkt.evaluation.metrics import EvaluationMetrics
@@ -25,20 +25,20 @@ class HyperparameterSpace:
     """Define the hyperparameter search space."""
 
     # Training parameters
-    abbrev_threshold: List[float] | None = None
-    colloc_threshold: List[float] | None = None
-    sent_starter_threshold: List[float] | None = None
-    min_colloc_freq: List[int] | None = None
-    min_sent_starter_freq: List[int] | None = None
+    abbrev_threshold: list[float] | None = None
+    colloc_threshold: list[float] | None = None
+    sent_starter_threshold: list[float] | None = None
+    min_colloc_freq: list[int] | None = None
+    min_sent_starter_freq: list[int] | None = None
 
     # Memory efficiency parameters
-    batch_size: List[int] | None = None
-    prune_freq: List[int] | None = None
-    min_type_freq: List[int] | None = None
+    batch_size: list[int] | None = None
+    prune_freq: list[int] | None = None
+    min_type_freq: list[int] | None = None
 
     # Feature toggles
-    include_default_abbrevs: List[bool] | None = None
-    use_memory_efficient: List[bool] | None = None
+    include_default_abbrevs: list[bool] | None = None
+    use_memory_efficient: list[bool] | None = None
 
     def __post_init__(self):
         """Set default search spaces."""
@@ -63,9 +63,22 @@ class HyperparameterSpace:
         if self.use_memory_efficient is None:
             self.use_memory_efficient = [True]
 
-    def get_param_grid(self) -> List[Dict[str, Any]]:
+    def get_param_grid(self) -> list[dict[str, Any]]:
         """Get all parameter combinations for grid search."""
-        param_dict = {
+        # __post_init__ always populates these with non-None lists; assert to
+        # narrow the `List[X] | None` field types for the type checker.
+        assert self.abbrev_threshold is not None
+        assert self.colloc_threshold is not None
+        assert self.sent_starter_threshold is not None
+        assert self.min_colloc_freq is not None
+        assert self.min_sent_starter_freq is not None
+        assert self.batch_size is not None
+        assert self.prune_freq is not None
+        assert self.min_type_freq is not None
+        assert self.include_default_abbrevs is not None
+        assert self.use_memory_efficient is not None
+
+        param_dict: dict[str, list[Any]] = {
             "abbrev_threshold": self.abbrev_threshold,
             "colloc_threshold": self.colloc_threshold,
             "sent_starter_threshold": self.sent_starter_threshold,
@@ -88,8 +101,21 @@ class HyperparameterSpace:
 
         return param_combinations
 
-    def sample_random(self, n_samples: int) -> List[Dict[str, Any]]:
+    def sample_random(self, n_samples: int) -> list[dict[str, Any]]:
         """Sample random parameter combinations."""
+        # __post_init__ always populates these with non-None lists; assert to
+        # narrow the `List[X] | None` field types for the type checker.
+        assert self.abbrev_threshold is not None
+        assert self.colloc_threshold is not None
+        assert self.sent_starter_threshold is not None
+        assert self.min_colloc_freq is not None
+        assert self.min_sent_starter_freq is not None
+        assert self.batch_size is not None
+        assert self.prune_freq is not None
+        assert self.min_type_freq is not None
+        assert self.include_default_abbrevs is not None
+        assert self.use_memory_efficient is not None
+
         samples = []
 
         for _ in range(n_samples):
@@ -114,9 +140,9 @@ class HyperparameterSpace:
 class OptimizationResult:
     """Result from hyperparameter optimization."""
 
-    best_params: Dict[str, Any]
+    best_params: dict[str, Any]
     best_metrics: EvaluationMetrics
-    all_results: List[Tuple[Dict[str, Any], EvaluationMetrics]]
+    all_results: list[tuple[dict[str, Any], EvaluationMetrics]]
     optimization_time: float
 
     def save(self, output_path: str | Path) -> None:
@@ -152,12 +178,12 @@ Top 5 Configurations:
 
 
 def train_and_evaluate(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     train_data: str | Path,
     eval_data: str | Path,
-    abbrev_files: List[str | Path] | None = None,
+    abbrev_files: list[str | Path] | None = None,
     verbose: bool = False,
-) -> Tuple[Dict[str, Any], EvaluationMetrics]:
+) -> tuple[dict[str, Any], EvaluationMetrics]:
     """
     Train a model with given parameters and evaluate it.
 
@@ -226,7 +252,7 @@ def optimize_hyperparameters(
     eval_data: str | Path,
     search_method: str = "random",
     n_trials: int = 20,
-    abbrev_files: List[str | Path] | None = None,
+    abbrev_files: list[str | Path] | None = None,
     output_path: str | Path | None = None,
     verbose: bool = True,
 ) -> OptimizationResult:

@@ -80,6 +80,54 @@ nupunkt train hf:alea-institute/kl3m-data-usc -o legal_model.bin
 nupunkt train hf:alea-institute/kl3m-data-usc --max-samples 1000 -o test_model.bin
 ```
 
+### Sentence-Annotated Text (Abbreviation Break Rates)
+
+Text that marks sentence ends with `<|sentence|>` (and, optionally, paragraphs with
+`<|paragraph|>`) teaches one extra statistic: for each known abbreviation, how often it
+is followed by a capitalized word and how often that position is a sentence boundary.
+
+```python
+from nupunkt import PunktTrainer, PunktSentenceTokenizer
+
+trainer = PunktTrainer()
+# Markers are stripped before the usual unsupervised training, then the break
+# counts are learned from them
+trainer.train("The vendor is Acme Ltd.<|sentence|> It delivers on time.")
+
+# Or add counts from separate annotated text once the abbreviations are final
+trainer.learn_break_rates(annotated_texts)
+
+params = trainer.get_params()
+params.abbrev_break_rates  # {"ltd": (followed_by_capital, sentence_breaks), ...}
+```
+
+The tokenizer uses the counts only for an abbreviation followed by a capitalized word:
+when the abbreviation was seen at least `BREAK_RATE_MIN_COUNT` (20) times in that position
+and ended the sentence in at least `BREAK_RATE_HIGH` (80%) of them, it ends the sentence
+("Smith & Sons Ltd. Their headquarters moved."). Otherwise the usual orthographic and
+sentence-starter evidence decides. Setting `BREAK_RATE_LOW` (off by default) additionally
+suppresses the sentence-starter break for abbreviations that rarely end sentences; it
+removes false positives on legal text ("App. Div.", "Ch. The") but also splits such as
+"born in the U.S. He moved", so enable it only for text like your training data.
+
+```python
+tokenizer = PunktSentenceTokenizer(params)
+tokenizer.BREAK_RATE_HIGH = 0.8
+tokenizer.BREAK_RATE_MIN_COUNT = 20
+tokenizer.BREAK_RATE_LOW = None  # e.g. 0.2 to enable the veto
+```
+
+Models without break counts behave exactly as before, and the counts are saved with the
+model (`abbrev_break_rates` in the parameters) only when present.
+
+The bundled default model ships counts learned from the Universal Dependencies English
+treebanks (EWT and GUM training sections), general prose rather than legal text; nupunkt's
+legal evaluation set is not used, so the published scores stay out of sample. On legal
+text the shipped counts are nearly neutral, and their main effect is to let ordinary
+words that the unsupervised trainer learned as abbreviations ("day", "will", "okay")
+end sentences again. To get the full benefit on your own domain, learn counts from
+sentence-annotated text of that domain as shown above and save them with your model.
+
 ## Hyperparameter Tuning
 
 ### Using Presets
@@ -246,6 +294,40 @@ nupunkt convert model.bin model.json
 # JSON to binary
 nupunkt convert model.json model.bin
 ```
+
+### Compacting a Model for Inference
+
+The orthographic context learned during training stores a flag word for every
+token type seen, but the tokenizer only needs the entries that carry a
+lowercase flag. Dropping the rest halves the model size and roughly triples
+load time without changing any output:
+
+```python
+from nupunkt import PunktParameters
+
+params = PunktParameters.load("my_model.json.gz")
+params.compact_ortho_context()
+params.save("my_model_inference.json.gz")
+```
+
+The bundled default model is exported this way by
+`scripts/compact_default_model.py`. A compacted model should not be used as the
+starting point for further training, since the uppercase-only evidence is gone.
+
+To go further, `params.drop_ortho_context()` removes the orthographic context
+altogether. The tokenizer only consults it for the word after an abbreviation,
+initial or number; without it, a lowercase follower still blocks a boundary and
+a capitalized follower falls back to the learned sentence starters. On the
+bundled legal gold set and on general English (UD EWT, UD GUM, Brown) this
+changes fewer than 0.1% of boundaries while making the model ~150x smaller.
+The bundled default model is exported this way:
+
+```bash
+python scripts/compact_default_model.py --drop-ortho
+```
+
+Keep sentence starters and collocations: removing sentence starters costs about
+0.01 F1 on every gold set.
 
 ## Evaluating Your Model
 

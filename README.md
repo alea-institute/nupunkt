@@ -4,7 +4,7 @@
 
 A high-precision, high-throughput sentence boundary detection library optimized for legal text processing, with zero runtime dependencies.
 
-> **Note on Performance**: Version 0.6.0+ includes adaptive tokenization features that add slight overhead compared to v0.5.1 and earlier. While 0.6.0+ is marginally slower, it remains faster than comparable methods and provides user-configurable precision/recall control through the threshold parameter (e.g., `sent_tokenize_adaptive(text, threshold=0.1)` for more conservative sentence splitting).
+> **0.7.0**: deterministic output, a 25 KB bundled model that loads in milliseconds, a 4-5x faster tokenizer, and a standard segmentation interface for words, sentences and paragraphs. See the [changelog](CHANGELOG.md) for details and migration notes.
 
 [![PyPI version](https://badge.fury.io/py/nupunkt.svg)](https://badge.fury.io/py/nupunkt)
 [![Python Version](https://img.shields.io/pypi/pyversions/nupunkt.svg)](https://pypi.org/project/nupunkt/)
@@ -16,9 +16,9 @@ nupunkt is a next-generation implementation of the Punkt algorithm specifically 
 
 Key features:
 - **Zero dependencies**: Pure Python 3.11+ (tqdm optional for progress bars)
-- **Adaptive mode**: Starting with `0.6.0`, supports an adaptive, confidence-based variant
+- **Adaptive mode**: an optional confidence-based variant with a tunable precision/recall threshold
 - **High precision**: 91.1% precision on legal text benchmarks
-- **High performance**: Processes 10+ million characters per second on standard CPU hardware
+- **High performance**: tens of millions of characters per second on standard CPU hardware, with a 25 KB model
 - **Pre-trained model**: Ready to use with legal-optimized abbreviations
 - **Trainable**: Can be trained on domain-specific text
 - **Paragraph detection**: Split text into both sentences and paragraphs
@@ -59,6 +59,65 @@ sentences = sent_tokenize(text)
 for i, sentence in enumerate(sentences, 1):
     print(f"Sentence {i}: {sentence}\n")
 ```
+
+## Segmentation Interface
+
+Words, sentences and paragraphs share one interface. For each level there are
+three list functions and a reusable segmenter object with generator forms:
+
+| Level     | Strings           | Spans                   | Both                       |
+|-----------|-------------------|-------------------------|----------------------------|
+| word      | `words(text)`     | `word_spans(text)`      | `word_segments(text)`      |
+| sentence  | `sentences(text)` | `sentence_spans(text)`  | `sentence_segments(text)`  |
+| paragraph | `paragraphs(text)`| `paragraph_spans(text)` | `paragraph_segments(text)` |
+
+```python
+from nupunkt import sentences, sentence_spans, sentence_segments, segmenter, contiguous
+
+text = "Dr. Smith arrived.  He left at 5 p.m.\n\nThe end."
+
+sentences(text)         # ['Dr. Smith arrived.', 'He left at 5 p.m.', 'The end.']
+sentence_spans(text)    # [(0, 18), (20, 37), (39, 47)]
+sentence_segments(text) # [Segment(text='Dr. Smith arrived.', start=0, end=18), ...]
+
+# Reusable object with generators: iter_segments / iter_texts / iter_spans
+seg = segmenter("paragraph")
+for para in seg.iter_segments(text):
+    print(para.start, para.end, para.text)
+```
+
+`Segment` is a named tuple `(text, start, end)` with `.span` for `(start, end)`.
+Spans are tight: `text[start:end]` is exactly the segment with no surrounding
+whitespace, segments never overlap, and whitespace stays in the gaps. When you
+need gap-free coverage of the whole input, use `contiguous(segments, text)`.
+
+Sentence functions accept `model=` and `adaptive=`; `segmenter("sentence", adaptive=True)`
+returns the adaptive tokenizer. The older `sent_tokenize`, `sent_spans`, `para_tokenize`
+family remains available unchanged.
+
+### All levels in one pass
+
+`segment(text)` runs sentence segmentation once and returns a `Document` tree
+(paragraphs, then sentences, then words). Paragraphs come from the same sentence
+boundaries, and words are only computed for a sentence when you read them:
+
+```python
+from nupunkt import segment
+
+doc = segment(text)
+for para in doc.paragraphs:
+    for sent in para.sentences:
+        print(sent.start, sent.end, [w.text for w in sent.words])
+
+doc.sentences   # flat list, == sentence_segments(text)
+doc.words       # flat list, == word_segments(text)
+doc.to_dict()   # JSON-ready nested dict; to_dict(words=False) omits words
+```
+
+Every node is a `Segment` (it unpacks as `(text, start, end)` and has `.span`),
+and each word lies inside its sentence, which lies inside its paragraph. For
+paragraphs plus sentences, `segment()` costs one sentence pass where
+`paragraph_segments()` + `sentence_segments()` cost two.
 
 ## Adaptive Tokenization (New in v0.6.0)
 
@@ -192,21 +251,18 @@ nupunkt optimize-params train.jsonl test.jsonl -o best_model.bin
 
 ## Performance
 
-nupunkt is designed for high-precision, high-throughput processing:
+nupunkt is designed for high-precision, high-throughput processing with a tiny
+footprint:
 
-- **Token caching** for common tokens
+- **Bundled model: 25 KB**, loads in about 2 ms, about 20 MB resident memory after load
+- **Deterministic**: the same input always produces the same output, in any order
 - **Fast path processing** for texts without sentence boundaries
-- **Pre-computed properties** to avoid repeated calculations
-- **Efficient character processing** in hot spots
+- **Memoized token properties** and a lean per-boundary decision path
 
-Example benchmark on legal text:
-```
-Documents processed:      1
-Total characters:         16,567,769
-Total sentences found:    16,095
-Processing time:          0.49 seconds
-Processing speed:         33,927,693 characters/second
-```
+Typical throughput on legal text is 15-25 million characters per second per
+core on a modern machine (measured on a 4 MB corpus with the default model;
+numbers vary with hardware and text). A reusable benchmark lives in
+`scripts/profiling/`.
 
 ## Documentation
 

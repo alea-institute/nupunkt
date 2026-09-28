@@ -8,7 +8,7 @@ including precision, recall, F1, boundary accuracy, and detailed error analysis.
 import json
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any
 
 
 @dataclass
@@ -33,7 +33,7 @@ class EvaluationMetrics:
     total_boundaries_pred: int
     total_boundaries_true: int
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert metrics to dictionary."""
         return {
             "precision": round(self.precision, 4),
@@ -88,7 +88,7 @@ Counts:
 """
 
 
-def get_sentence_boundaries(sentences: List[str], text: str) -> Set[int]:
+def get_sentence_boundaries(sentences: list[str], text: str) -> set[int]:
     """
     Extract sentence boundary positions from a list of sentences.
 
@@ -120,7 +120,7 @@ def get_sentence_boundaries(sentences: List[str], text: str) -> Set[int]:
     return boundaries
 
 
-def precision_recall_f1(tp: int, fp: int, fn: int) -> Tuple[float, float, float]:
+def precision_recall_f1(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
     """Calculate precision, recall, and F1 score."""
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
@@ -129,8 +129,8 @@ def precision_recall_f1(tp: int, fp: int, fn: int) -> Tuple[float, float, float]
 
 
 def boundary_accuracy(
-    pred_boundaries: Set[int], true_boundaries: Set[int], tolerance: int = 0
-) -> Tuple[int, int, int]:
+    pred_boundaries: set[int], true_boundaries: set[int], tolerance: int = 0
+) -> tuple[int, int, int]:
     """
     Calculate boundary detection accuracy with optional tolerance.
 
@@ -169,7 +169,7 @@ def normalize_sentence(sent: str) -> str:
 
 
 def calculate_metrics(
-    pred_sentences: List[str], true_sentences: List[str], original_text: str, processing_time: float
+    pred_sentences: list[str], true_sentences: list[str], original_text: str, processing_time: float
 ) -> EvaluationMetrics:
     """
     Calculate comprehensive evaluation metrics.
@@ -257,7 +257,7 @@ def calculate_metrics(
 def create_evaluation_report(
     metrics: EvaluationMetrics,
     output_path: str | None = None,
-    model_info: Dict[str, Any] | None = None,
+    model_info: dict[str, Any] | None = None,
 ) -> str:
     """
     Create a detailed evaluation report.

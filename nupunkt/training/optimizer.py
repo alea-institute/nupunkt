@@ -7,7 +7,7 @@ converting between different model formats.
 
 import time
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any
 
 from nupunkt.utils.compression import (
     load_binary_model,
@@ -18,8 +18,8 @@ from nupunkt.utils.compression import (
 
 
 def optimize_model(
-    input_path: Union[str, Path] | None = None,
-    output_path: Union[str, Path] | None = None,
+    input_path: str | Path | None = None,
+    output_path: str | Path | None = None,
     format_type: str = "binary",
     compression_method: str = "zlib",
     compression_level: int = 6,
@@ -81,12 +81,12 @@ def optimize_model(
 
 
 def convert_model_format(
-    input_path: Union[str, Path],
-    output_path: Union[str, Path],
+    input_path: str | Path,
+    output_path: str | Path,
     format_type: str = "binary",
     compression_method: str = "zlib",
     compression_level: int = 6,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Convert a model from one format to another.
 
@@ -162,7 +162,7 @@ def convert_model_format(
     }
 
 
-def get_model_info(model_path: Union[str, Path]) -> Dict[str, Any]:
+def get_model_info(model_path: str | Path) -> dict[str, Any]:
     """
     Get information about a model file.
 

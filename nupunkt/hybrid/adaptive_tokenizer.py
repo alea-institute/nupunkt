@@ -9,7 +9,7 @@ This tokenizer enhances the base Punkt algorithm by:
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Set, Tuple
+from typing import Any, TypedDict
 
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
@@ -51,7 +51,7 @@ class BoundaryDecision:
     base_decision: bool
     final_decision: bool
     confidence: float
-    reasons: List[str]
+    reasons: list[str]
     overridden: bool
 
 
@@ -76,6 +76,9 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
         # Pattern for all-caps acronyms with dots (e.g., U.S.A., M.I.T.)
         re.compile(r"^[A-Z](\.[A-Z])+\.?$"),
     ]
+
+    # Closing quotes and brackets that end a quoted or parenthetical sentence
+    _CLOSING_TOKENS = frozenset(['"', "'", ")", "]", "}", "\u201d", "\u2019", "\u00bb"])
 
     # Tokens that often follow abbreviations (not sentence starters)
     CONTINUATION_WORDS = {
@@ -137,7 +140,7 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
         self.decisions = []
 
         # Track dynamically identified abbreviations for this session
-        self.dynamic_abbrevs: Set[str] = set()
+        self.dynamic_abbrevs: set[str] = set()
 
         # PERFORMANCE FIX: If we loaded from the same model, preserve the original
         # frozenset objects to maintain LRU cache efficiency
@@ -153,7 +156,7 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
 
     def _is_likely_abbreviation(
         self, token: PunktToken, next_token: PunktToken | None
-    ) -> Tuple[bool, List[str]]:
+    ) -> tuple[bool, list[str]]:
         """
         Check if a token is likely an abbreviation using patterns and context.
 
@@ -190,6 +193,11 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
 
         # Context checks
         if next_token:
+            # A closing quote or bracket right after a capitalized word ("Stop.")
+            # means the period ended a quoted sentence, not an abbreviation.
+            if next_token.tok in self._CLOSING_TOKENS and token.first_upper:
+                return False, ["Followed by closing punctuation"]
+
             # Check if followed by lowercase continuation word
             if next_token.first_lower and next_token.tok.lower() in self.CONTINUATION_WORDS:
                 reasons.append(f"Followed by continuation word: {next_token.tok}")
@@ -210,7 +218,7 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
 
     def _calculate_boundary_confidence(
         self, token: PunktToken, next_token: PunktToken | None, base_decision: bool
-    ) -> Tuple[float, List[str]]:
+    ) -> tuple[float, list[str]]:
         """
         Calculate confidence in sentence boundary decision.
 
@@ -336,7 +344,7 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
                 )
             )
 
-    def tokenize(self, text: str, **kwargs) -> List[str]:
+    def tokenize(self, text: str, realign_boundaries: bool = True, **kwargs) -> list[str]:
         """
         Tokenize with optional debug output.
         """
@@ -345,7 +353,7 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
             self.decisions = []
 
         # Tokenize
-        sentences = super().tokenize(text, **kwargs)
+        sentences = super().tokenize(text, realign_boundaries, **kwargs)
 
         # Show debug info if requested
         if self.debug and self.decisions:
@@ -361,7 +369,7 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
 
         return sentences
 
-    def tokenize_with_confidence(self, text: str, **kwargs) -> List[Tuple[str, float]]:
+    def tokenize_with_confidence(self, text: str, **kwargs) -> list[tuple[str, float]]:
         """
         Tokenize text and return sentences with confidence scores.
 
@@ -424,6 +432,13 @@ class AdaptiveTokenizer(PunktSentenceTokenizer):
         return results
 
 
+class _DomainSettings(TypedDict):
+    """Per-domain configuration for :func:`create_adaptive_tokenizer`."""
+
+    confidence_threshold: float
+    enable_dynamic_abbrev: bool
+
+
 def create_adaptive_tokenizer(
     model_or_text: Any = None, domain: str = "general", debug: bool = False, **kwargs
 ) -> AdaptiveTokenizer:
@@ -440,7 +455,7 @@ def create_adaptive_tokenizer(
         Configured tokenizer
     """
     # Domain-specific settings
-    domain_settings = {
+    domain_settings: dict[str, _DomainSettings] = {
         "general": {
             "confidence_threshold": 0.7,
             "enable_dynamic_abbrev": True,

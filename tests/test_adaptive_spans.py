@@ -2,8 +2,6 @@
 Tests for adaptive sentence span functions.
 """
 
-from typing import List, Tuple
-
 import pytest
 
 import nupunkt
@@ -34,7 +32,7 @@ class TestAdaptiveSpans:
         text = "Dr. Smith studied at M.I.T. in Cambridge. She graduated in 2020."
 
         # Get spans with text (without confidence)
-        results: List[Tuple[str, Tuple[int, int]]] = nupunkt.sent_spans_with_text_adaptive(text)
+        results: list[tuple[str, tuple[int, int]]] = nupunkt.sent_spans_with_text_adaptive(text)
 
         assert len(results) == 2
 
@@ -167,7 +165,9 @@ class TestAdaptiveSpanEdgeCases:
         """Test complex abbreviation patterns."""
         text = "The C.E.O.'s decision regarding Ph.D. candidates was final."
 
-        spans_with_text: List[Tuple[str, Tuple[int, int]]] = nupunkt.sent_spans_with_text_adaptive(text)
+        spans_with_text: list[tuple[str, tuple[int, int]]] = nupunkt.sent_spans_with_text_adaptive(
+            text
+        )
 
         # Should recognize as single sentence
         assert len(spans_with_text) == 1

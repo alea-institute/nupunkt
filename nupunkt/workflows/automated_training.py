@@ -12,7 +12,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from nupunkt.evaluation.evaluator import evaluate_model
 from nupunkt.optimization.hyperparameter import HyperparameterSpace, optimize_hyperparameters
@@ -43,7 +43,7 @@ class AutomatedWorkflow:
         experiment_name: str = "experiment",
         optimize_params: bool = True,
         n_optimization_trials: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Run complete training and evaluation pipeline.
 
@@ -142,7 +142,7 @@ class AutomatedWorkflow:
         return results
 
     def _train_with_params(
-        self, params: Dict[str, Any], train_data: str | Path, output_path: str | Path
+        self, params: dict[str, Any], train_data: str | Path, output_path: str | Path
     ) -> None:
         """Train model with specific parameters."""
         from nupunkt.trainers.base_trainer import PunktTrainer
@@ -175,7 +175,7 @@ class AutomatedWorkflow:
             PunktTrainer.COLLOCATION = original_colloc
             PunktTrainer.SENT_STARTER = original_starter
 
-    def _generate_report(self, results: Dict[str, Any]) -> str:
+    def _generate_report(self, results: dict[str, Any]) -> str:
         """Generate a comprehensive Markdown report."""
         report = f"""# Experiment Report: {results["experiment_name"]}
 
@@ -230,7 +230,7 @@ def run_automated_experiment(
     experiment_name: str = "automated_experiment",
     output_dir: str | Path = "experiments",
     optimize: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Convenience function to run an automated experiment.
 

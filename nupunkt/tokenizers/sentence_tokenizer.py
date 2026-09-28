@@ -5,11 +5,10 @@ This module provides the main tokenizer class for sentence boundary detection.
 """
 
 import re
-from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Tuple, Type, Union
+from typing import Any, Callable, Iterator
 
-from nupunkt.core.base import PunktBase
+from nupunkt.core.base import PunktBase, is_abbreviation
 from nupunkt.core.constants import (
     DOC_TOKENIZE_CACHE_SIZE,
     ORTHO_BEG_LC,
@@ -23,23 +22,20 @@ from nupunkt.core.constants import (
 )
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.parameters import PunktParameters
-from nupunkt.core.tokens import PunktToken
+from nupunkt.core.tokens import PunktToken, _check_is_ellipsis, _check_is_initial, _derived
+from nupunkt.segmentation import Segment, SegmenterMixin, tight
 from nupunkt.trainers.base_trainer import PunktTrainer
 from nupunkt.utils.iteration import pair_iter
 
 
-@lru_cache(maxsize=ORTHO_CACHE_SIZE)
-def cached_ortho_heuristic(
-    ortho_context: int, type_no_sentperiod: str, first_upper: bool, first_lower: bool
-) -> Union[bool, str]:
+def ortho_heuristic(ortho_context: int, first_upper: bool, first_lower: bool) -> bool | str:
     """
-    Cached implementation of orthographic heuristics.
+    Decide from orthographic context whether a token starts a sentence.
 
     Args:
-        ortho_context: The orthographic context value from parameters
-        type_no_sentperiod: The token type without sentence-final period
-        first_upper: Whether the first character is uppercase
-        first_lower: Whether the first character is lowercase
+        ortho_context: The orthographic context flags for the token type
+        first_upper: Whether the token's first character is uppercase
+        first_lower: Whether the token's first character is lowercase
 
     Returns:
         True if the token starts a sentence, False if not, "unknown" if uncertain
@@ -51,22 +47,60 @@ def cached_ortho_heuristic(
     return "unknown"
 
 
-@lru_cache(maxsize=SENT_STARTER_CACHE_SIZE)
-def is_sent_starter(sent_starters: frozenset, token_type: str) -> bool:
+def _looks_like_model_path(value: str) -> bool:
+    """Return True if a string names an existing file (never raises for long text)."""
+    if len(value) > 4096 or "\n" in value:
+        return False
+    try:
+        return Path(value).is_file()
+    except (OSError, ValueError):
+        return False
+
+
+# First-pass outcomes of a token string, as computed by ``PunktBase._first_pass_annotation``
+_FP_NONE = 0  # not a candidate (no sentence-final punctuation)
+_FP_BREAK = 1  # sentence break
+_FP_ABBR = 2  # known abbreviation
+_FP_ELLIPSIS = 3  # ellipsis (decided by the second pass)
+
+# Closing quotes, brackets and markdown emphasis that may trail a sentence end
+_CLOSING_CHARS = frozenset("\"')]}\u201d\u2019\u00bb*")
+_CLOSING_CHARS_RE = re.escape("".join(sorted(_CLOSING_CHARS)))
+
+# A candidate context: the chunk holding the sentence-ending character (plus any
+# glued closing punctuation) and the whitespace and chunk that follow it.
+Context = tuple[str, str]
+
+# ``period_context_pattern`` -> candidate pattern used by ``_match_potential_end_contexts``
+_CANDIDATE_PATTERNS: dict[re.Pattern, re.Pattern] = {}
+# Tokenizer class -> whether the string-level decision engine reproduces its annotation
+_ENGINE_CLASSES: dict[type, bool] = {}
+
+
+def _candidate_pattern(period_context: re.Pattern) -> re.Pattern:
     """
-    Check if a token type is a known sentence starter, using cached lookups.
+    Extend a period-context pattern for single-pass candidate scanning.
 
-    Args:
-        sent_starters: A frozenset of known sentence starters
-        token_type: The token type to check
-
-    Returns:
-        True if the token type is a known sentence starter, False otherwise
+    The extension skips periods that continue a spaced ellipsis (". . .", only the
+    last period is a candidate) and captures two groups that delimit the context
+    handed to the annotation passes: ``_tail``, any closing punctuation glued to
+    the sentence-ending character (it belongs to the token before the boundary),
+    and ``_nw``, the whitespace and the whole next whitespace-delimited chunk.
     """
-    return token_type in sent_starters
+    pattern = _CANDIDATE_PATTERNS.get(period_context)
+    if pattern is None:
+        pattern = re.compile(
+            f"(?:{period_context.pattern})"
+            + r"(?!(?<=\.)\s+\.)(?=(?P<_tail>["
+            + _CLOSING_CHARS_RE
+            + r"]*)(?P<_nw>\s*\S*))",
+            period_context.flags,
+        )
+        _CANDIDATE_PATTERNS[period_context] = pattern
+    return pattern
 
 
-class PunktSentenceTokenizer(PunktBase):
+class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
     """
     Sentence tokenizer using the Punkt algorithm.
 
@@ -75,15 +109,74 @@ class PunktSentenceTokenizer(PunktBase):
     """
 
     # Pre-compiled regex patterns
-    _RE_ELLIPSIS_MULTI = re.compile(r"\.\.+")
-    _RE_ELLIPSIS_SPACED = re.compile(r"\.\s+\.\s+\.")
-    _RE_UNICODE_ELLIPSIS = re.compile("\u2026")
+    # Everything up to and including the last whitespace character (match with endpos)
+    _RE_LAST_WS = re.compile(r".*\s", re.DOTALL)
+    # A period that starts or continues a spaced ellipsis (". . .")
+    _RE_SPACED_ELLIPSIS_AT = re.compile(r"\.(?:\s+\.)+")
+    # "!" or "?" followed by whitespace and an uppercase letter: a certain break
+    _RE_EXCL_QUEST_BREAK = re.compile(r"[!?]\s(?=[^\W\d_])")
 
     # Set of common punctuation marks for fast lookup
     _PUNCT_CHARS = frozenset([";", ":", ",", ".", "!", "?"])
 
     # Common sentence-ending punctuation as a frozenset for O(1) lookups
-    _SENT_END_CHARS = frozenset([".", "!", "?"])
+    _SENT_END_CHARS = frozenset([".", "!", "?", "\u2026"])
+
+    # A line-start list enumerator ("1.", "(a).", "IV.") is not a sentence by itself
+    _RE_LINE_ENUMERATOR = re.compile(r"[ \t]*\(?(?:\d{1,3}|[A-Za-z]|[ivxlcIVXLC]{1,6})\)?\.")
+    # Closing punctuation that may trail a sentence-ending character
+    _CLOSING_CHARS = _CLOSING_CHARS
+    # Per-abbreviation break rates (``PunktParameters.abbrev_break_rates``): an
+    # abbreviation seen at least BREAK_RATE_MIN_COUNT times before a capitalized word
+    # ends the sentence when it did so in at least BREAK_RATE_HIGH of those cases. With
+    # BREAK_RATE_LOW set, a rate at or below it vetoes the sentence-starter heuristic;
+    # it is off by default because the abbreviation's rate ignores the follower
+    # ("U.S. Government" vs. "U.S. He"). Instances may override these attributes.
+    BREAK_RATE_HIGH: float = 0.8
+    BREAK_RATE_LOW: float | None = None
+    BREAK_RATE_MIN_COUNT: int = 20
+
+    # Prenominal titles: never sentence-final before a capitalized name
+    _TITLE_ABBREVS = frozenset(
+        [
+            "mr",
+            "mrs",
+            "ms",
+            "dr",
+            "prof",
+            "hon",
+            "rev",
+            "gen",
+            "lt",
+            "col",
+            "capt",
+            "sgt",
+            "gov",
+            "sen",
+            "rep",
+            "messrs",
+            "mme",
+            "mlle",
+        ]
+    )
+
+    # Bounds of the string-level decision memos (see ``_decision_state``)
+    _DECISION_MEMO_SIZE = 32768
+    _DECISION_CONTEXT_MAX_LEN = 200
+    # Methods the string-level decision engine re-implements; a subclass overriding
+    # any of them (e.g. AdaptiveTokenizer) is decided on PunktToken objects instead.
+    _ENGINE_HOOKS = (
+        "text_contains_sentbreak",
+        "_annotate_tokens",
+        "_annotate_first_pass",
+        "_annotate_second_pass",
+        "_first_pass_annotation",
+        "_second_pass_annotation",
+        "_ortho_heuristic",
+        "_is_sent_starter",
+        "_break_rate_decision",
+        "_tokenize_words",
+    )
 
     @staticmethod
     def _is_next_char_uppercase(text: str, pos: int, text_len: int) -> bool:
@@ -112,8 +205,9 @@ class PunktSentenceTokenizer(PunktBase):
         if abbrev.endswith("."):
             abbrev = abbrev[:-1]
         self._params.abbrev_types.add(abbrev.lower())
+        self.clear_decision_cache()
 
-    def add_abbreviations(self, abbrevs: List[str]) -> None:
+    def add_abbreviations(self, abbrevs: list[str]) -> None:
         """Add multiple abbreviations to the tokenizer.
 
         Args:
@@ -131,20 +225,35 @@ class PunktSentenceTokenizer(PunktBase):
         if abbrev.endswith("."):
             abbrev = abbrev[:-1]
         self._params.abbrev_types.discard(abbrev.lower())
+        self.clear_decision_cache()
+
+    def clear_decision_cache(self) -> None:
+        """
+        Forget memoized boundary decisions.
+
+        Decisions are memoized per parameter set and dropped automatically when the
+        parameters are replaced, when a parameter collection is replaced or changes
+        size, and on ``add_abbreviation``/``remove_abbreviation`` (on any tokenizer
+        sharing the parameters). Call this after editing ``_params`` in place in a
+        way that keeps every collection's size, e.g. changing an ``ortho_context``
+        value.
+        """
+        generation = self._params.__dict__.get("_decision_generation", 0)
+        self._params.__dict__["_decision_generation"] = generation + 1
 
     def __init__(
         self,
         model_or_text: Any | None = None,
         verbose: bool = False,
         lang_vars: PunktLanguageVars | None = None,
-        token_cls: Type[PunktToken] = PunktToken,
+        token_cls: type[PunktToken] = PunktToken,
         include_common_abbrevs: bool = True,  # Whether to include common abbreviations
         cache_size: int = DOC_TOKENIZE_CACHE_SIZE,  # Size of the sentence tokenization cache
         paragraph_cache_size: int = PARA_TOKENIZE_CACHE_SIZE,  # Size of the paragraph-level cache
         enable_paragraph_caching: bool = False,  # Whether to enable paragraph-level caching
-        ortho_cache_size: int = ORTHO_CACHE_SIZE,  # Size of the orthographic heuristic cache
-        sent_starter_cache_size: int = SENT_STARTER_CACHE_SIZE,  # Size of the sentence starter cache
-        whitespace_cache_size: int = WHITESPACE_CACHE_SIZE,  # Size of the whitespace index cache
+        ortho_cache_size: int = ORTHO_CACHE_SIZE,  # Deprecated: no longer used
+        sent_starter_cache_size: int = SENT_STARTER_CACHE_SIZE,  # Deprecated: no longer used
+        whitespace_cache_size: int = WHITESPACE_CACHE_SIZE,  # Deprecated: no longer used
     ) -> None:
         """
         Initialize the tokenizer with a model, training text, or parameters.
@@ -161,9 +270,9 @@ class PunktSentenceTokenizer(PunktBase):
             cache_size: Size of the document-level tokenization cache
             paragraph_cache_size: Size of the paragraph-level cache
             enable_paragraph_caching: Whether to enable paragraph-level caching
-            ortho_cache_size: Size of the orthographic heuristic cache
-            sent_starter_cache_size: Size of the sentence starter cache
-            whitespace_cache_size: Size of the whitespace index cache
+            ortho_cache_size: Deprecated and ignored (kept for API compatibility)
+            sent_starter_cache_size: Deprecated and ignored (kept for API compatibility)
+            whitespace_cache_size: Deprecated and ignored (kept for API compatibility)
         """
         super().__init__(lang_vars, token_cls)
 
@@ -175,9 +284,9 @@ class PunktSentenceTokenizer(PunktBase):
         # Handle different input types
         if model_or_text:
             if isinstance(model_or_text, str):
-                # Check if it's a file path
+                # Check if it's a file path (long or multi-line strings are text)
                 path = Path(model_or_text)
-                if path.is_file() and (
+                if _looks_like_model_path(model_or_text) and (
                     path.suffix in (".bin", ".json", ".xz") or str(path).endswith(".json.xz")
                 ):
                     # Load from file
@@ -201,7 +310,7 @@ class PunktSentenceTokenizer(PunktBase):
         # Add common abbreviations if using an existing parameter set
         if (
             include_common_abbrevs
-            and not (isinstance(model_or_text, str) and not Path(model_or_text).is_file())
+            and not (isinstance(model_or_text, str) and not _looks_like_model_path(model_or_text))
             and hasattr(PunktTrainer, "COMMON_ABBREVS")
         ):
             for abbr in PunktTrainer.COMMON_ABBREVS:
@@ -211,7 +320,7 @@ class PunktSentenceTokenizer(PunktBase):
                     f"Added {len(PunktTrainer.COMMON_ABBREVS)} common abbreviations to tokenizer."
                 )
 
-    def to_json(self) -> Dict[str, Any]:
+    def to_json(self) -> dict[str, Any]:
         """
         Convert the tokenizer to a JSON-serializable dictionary.
 
@@ -230,9 +339,9 @@ class PunktSentenceTokenizer(PunktBase):
     @classmethod
     def from_json(
         cls,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         lang_vars: PunktLanguageVars | None = None,
-        token_cls: Type[PunktToken] | None = None,
+        token_cls: type[PunktToken] | None = None,
     ) -> "PunktSentenceTokenizer":
         """
         Create a PunktSentenceTokenizer from a JSON dictionary.
@@ -252,7 +361,7 @@ class PunktSentenceTokenizer(PunktBase):
         return cls(trainer.get_params(), lang_vars=lang_vars, token_cls=token_cls or PunktToken)
 
     def save(
-        self, file_path: Union[str, Path], compress: bool = True, compression_level: int = 1
+        self, file_path: str | Path, compress: bool = True, compression_level: int = 1
     ) -> None:
         """
         Save the tokenizer to a JSON file, optionally with LZMA compression.
@@ -271,9 +380,9 @@ class PunktSentenceTokenizer(PunktBase):
     @classmethod
     def load(
         cls,
-        file_path: Union[str, Path],
+        file_path: str | Path,
         lang_vars: PunktLanguageVars | None = None,
-        token_cls: Type[PunktToken] | None = None,
+        token_cls: type[PunktToken] | None = None,
     ) -> "PunktSentenceTokenizer":
         """
         Load a PunktSentenceTokenizer from a JSON file, which may be compressed with LZMA.
@@ -291,7 +400,7 @@ class PunktSentenceTokenizer(PunktBase):
         data = load_compressed_json(file_path)
         return cls.from_json(data, lang_vars, token_cls)
 
-    def reconfigure(self, config: Dict[str, Any]) -> None:
+    def reconfigure(self, config: dict[str, Any]) -> None:
         """
         Reconfigure the tokenizer with new settings.
 
@@ -309,7 +418,18 @@ class PunktSentenceTokenizer(PunktBase):
             trainer._params = self._params
             trainer._finalized = True
 
-    def tokenize(self, text: str, realign_boundaries: bool = True) -> List[str]:
+    def iter_segments(self, text: str) -> Iterator[Segment]:
+        """
+        Yield each sentence of ``text`` with its tight character span.
+
+        This is the primitive behind ``segments``, ``texts``, ``spans`` and their
+        ``iter_*`` forms (see :mod:`nupunkt.segmentation`). Unlike ``span_tokenize``,
+        the spans never include surrounding whitespace.
+        """
+        raw = (Segment(text[start:end], start, end) for start, end in self.span_tokenize(text))
+        yield from tight(raw, text)
+
+    def tokenize(self, text: str, realign_boundaries: bool = True) -> list[str]:
         """
         Tokenize text into sentences.
 
@@ -324,7 +444,7 @@ class PunktSentenceTokenizer(PunktBase):
 
     def span_tokenize(
         self, text: str, realign_boundaries: bool = True
-    ) -> Iterator[Tuple[int, int]]:
+    ) -> Iterator[tuple[int, int]]:
         """
         Tokenize text into sentence spans.
 
@@ -341,7 +461,7 @@ class PunktSentenceTokenizer(PunktBase):
         for s in slices:
             yield (s.start, s.stop)
 
-    def sentences_from_text(self, text: str, realign_boundaries: bool = True) -> List[str]:
+    def sentences_from_text(self, text: str, realign_boundaries: bool = True) -> list[str]:
         """
         Extract sentences from text.
 
@@ -356,7 +476,7 @@ class PunktSentenceTokenizer(PunktBase):
 
     def tokenize_with_spans(
         self, text: str, realign_boundaries: bool = True
-    ) -> List[Tuple[str, Tuple[int, int]]]:
+    ) -> list[tuple[str, tuple[int, int]]]:
         """
         Tokenize text into sentences with their character spans.
 
@@ -393,10 +513,9 @@ class PunktSentenceTokenizer(PunktBase):
         return result
 
     @staticmethod
-    @lru_cache(maxsize=WHITESPACE_CACHE_SIZE)
-    def _cached_whitespace_index(text: str) -> int:
+    def _get_last_whitespace_index(text: str) -> int:
         """
-        Cached implementation of finding the last whitespace index.
+        Find the index of the last whitespace character in a string.
 
         Args:
             text: The text to search
@@ -409,129 +528,72 @@ class PunktSentenceTokenizer(PunktBase):
                 return i
         return 0
 
-    def _get_last_whitespace_index(self, text: str) -> int:
+    def _match_potential_end_contexts(self, text: str) -> list[tuple[re.Match, Context]]:
         """
-        Find the index of the last whitespace character in a string.
+        Find potential sentence end contexts in text.
+
+        Each context is a pair ``(before, after)``: ``before`` runs from the start
+        of the word holding the sentence-ending character through any closing
+        punctuation glued to it, and ``after`` is the whitespace and the whole next
+        word. The annotation passes decide the tokens of ``before``; the first token
+        of ``after`` only provides context. Candidates within one whitespace-free
+        chunk share a context; the last of them is reported.
 
         Args:
             text: The text to search
 
         Returns:
-            The index of the last whitespace character, or 0 if none
+            A list of (match, (before, after)) tuples for potential sentence ends
         """
-        return self._cached_whitespace_index(text)
+        matches: list[tuple[re.Match, Context]] = []
+        if len(text) < 2:
+            return matches
 
-    def _match_potential_end_contexts(self, text: str) -> Iterator[Tuple[re.Match, str]]:
-        """
-        Find potential sentence end contexts in text.
-
-        Args:
-            text: The text to search
-
-        Yields:
-            Tuples of (match, context) for potential sentence ends
-        """
-        # Pre-compute text length once
-        text_len = len(text)
-
-        # Skip processing if text is too short
-        if text_len < 2:
-            return
-
-        # Quick check for any sentence-ending characters using frozenset for O(1) lookups
+        # Quick check for any sentence-ending characters
         if not any(end_char in text for end_char in self._SENT_END_CHARS):
-            return
+            return matches
 
-        # Collect all matches to avoid generator overhead
-        matches: List[Tuple[re.Match, str]] = []
+        last_ws = self._RE_LAST_WS.match
+        prev_start = 0
+        prev_stop = 0
+        prev_split = 0
+        prev_end = 0
+        previous: re.Match | None = None
 
-        previous_slice = slice(0, 0)
-        previous_match: re.Match | None = None
-
-        # Special handling for ellipsis followed by capital letter - only check if text contains '..'
-        ellipsis_positions = []
-
-        # Fast path: only process ellipsis if the text contains consecutive periods
-        if ".." in text or "\u2026" in text or ". . " in text:
-            # Multiple periods ellipsis
-            for match in self._RE_ELLIPSIS_MULTI.finditer(text):
-                end_pos = match.end()
-                # Check if there's a capital letter after the ellipsis
-                if end_pos < text_len and self._is_next_char_uppercase(text, end_pos, text_len):
-                    ellipsis_positions.append(end_pos - 1)  # Position of the last period
-
-            # Spaced ellipsis
-            for match in self._RE_ELLIPSIS_SPACED.finditer(text):
-                end_pos = match.end()
-                if end_pos < text_len and self._is_next_char_uppercase(text, end_pos, text_len):
-                    ellipsis_positions.append(end_pos - 1)
-
-            # Unicode ellipsis
-            for match in self._RE_UNICODE_ELLIPSIS.finditer(text):
-                end_pos = match.end()
-                if end_pos < text_len and self._is_next_char_uppercase(text, end_pos, text_len):
-                    ellipsis_positions.append(end_pos - 1)
-
-        # Standard processing for period contexts
-        for match in self._lang_vars.period_context_pattern.finditer(text):
-            # Skip periods that are part of spaced ellipsis (. . .)
+        for match in _candidate_pattern(self._lang_vars.period_context_pattern).finditer(text):
             match_pos = match.start()
-            # Check if this period is part of a spaced ellipsis pattern
-            # Look for pattern like "X . . . Y" where X and Y are not periods
-            if match_pos >= 2 and match_pos < text_len - 4:
-                # Check for ". . ." pattern - first period
-                if text[match_pos : match_pos + 4] == ". . ":
-                    continue
-                # Check for ". . ." pattern - middle period
-                if text[match_pos - 2 : match_pos + 2] == ". . ":
-                    continue
-                # Check for ". . ." pattern - last period
-                if text[match_pos - 4 : match_pos] == " . .":
-                    continue
-
-            before_text = text[previous_slice.stop : match.start()]
-            idx = self._get_last_whitespace_index(before_text)
-            index_after_last_space = previous_slice.stop + idx + 1 if idx else previous_slice.start
-            prev_word_slice = slice(index_after_last_space, match.start())
-            if previous_match and previous_slice.stop <= prev_word_slice.start:
-                # Build context including the next word for better sentence break detection
-                # Include the word before the period, the period match, and enough following text
-                end_pos = previous_match.end()
-                # Find the end of the next word after the match
-                next_word_end = end_pos
-                while next_word_end < text_len and text[next_word_end].isspace():
-                    next_word_end += 1
-                # Include the next word but stop at punctuation that could be a sentence end
-                while next_word_end < text_len and not text[next_word_end].isspace():
-                    # Stop if we hit another period, exclamation, or question mark
-                    if text[next_word_end] in ".!?":
+            # The word starts after the last whitespace since the previous candidate;
+            # without one, this candidate shares the previous candidate's context.
+            m = last_ws(text, prev_stop, match_pos)
+            word_start = m.end() if m and m.end() > prev_stop + 1 else prev_start
+            if match_pos > 1 and text[match_pos - 1].isspace():
+                # Last period of a spaced ellipsis: start the context before the run
+                # so it tokenizes as one ellipsis token.
+                run_start = match_pos
+                while True:
+                    i = run_start - 1
+                    while i >= 0 and text[i].isspace():
+                        i -= 1
+                    if i >= 0 and i < run_start - 1 and text[i] == ".":
+                        run_start = i
+                    else:
                         break
-                    next_word_end += 1
+                if run_start < match_pos:
+                    m = last_ws(text[prev_stop:run_start].rstrip())
+                    run_word = prev_stop + m.end() if m and m.end() > 1 else prev_start
+                    word_start = min(word_start, run_word)
+            if previous is not None and prev_stop <= word_start:
+                matches.append((previous, (text[prev_start:prev_split], text[prev_split:prev_end])))
+            previous = match
+            prev_start = word_start
+            prev_stop = match_pos
+            prev_split = match.end("_tail")
+            prev_end = match.end("_nw")
 
-                context = text[previous_slice.start : next_word_end]
-                matches.append((previous_match, context))
-            previous_match = match
-            previous_slice = prev_word_slice
+        if previous is not None:
+            matches.append((previous, (text[prev_start:prev_split], text[prev_split:prev_end])))
 
-        if previous_match:
-            # Build context including the next word for better sentence break detection
-            end_pos = previous_match.end()
-            # Find the end of the next word after the match
-            next_word_end = end_pos
-            while next_word_end < text_len and text[next_word_end].isspace():
-                next_word_end += 1
-            # Include the next word but stop at punctuation that could be a sentence end
-            while next_word_end < text_len and not text[next_word_end].isspace():
-                # Stop if we hit another period, exclamation, or question mark
-                if text[next_word_end] in ".!?":
-                    break
-                next_word_end += 1
-
-            context = text[previous_slice.start : next_word_end]
-            matches.append((previous_match, context))
-
-        # Yield all matches at once
-        yield from matches
+        return matches
 
     def _slices_from_text(self, text: str) -> Iterator[slice]:
         """
@@ -544,7 +606,8 @@ class PunktSentenceTokenizer(PunktBase):
             slice objects for each sentence
         """
         # Find the last non-whitespace character index directly without creating a copy
-        text_end = len(text) - 1
+        text_len = len(text)
+        text_end = text_len - 1
         while text_end >= 0 and text[text_end].isspace():
             text_end -= 1
         # Add 1 to include the non-whitespace character itself
@@ -554,9 +617,32 @@ class PunktSentenceTokenizer(PunktBase):
             text_end = 0
 
         last_break = 0
+        closing = self._CLOSING_CHARS
+        # Decide on strings (memoized per context) unless a subclass customizes the
+        # token-level annotation, in which case every context goes through it.
+        if self._uses_decision_engine():
+            contains_sentbreak = self._decision_state()[3]
+        else:
+            contains_sentbreak = self._context_contains_sentbreak
         # Get all potential sentence breaks in one go
         for match, context in self._match_potential_end_contexts(text):
-            if self.text_contains_sentbreak(context):
+            pos = match.start()
+            if text[pos] == "." and self._is_line_start_enumerator(text, pos):
+                continue
+            pos = match.end()
+            # A run of terminal punctuation ("?!", "!!!") ends the sentence at its last char
+            if pos < text_len and text[pos] in "!?":
+                continue
+            if pos < text_len and text[pos] in closing:
+                # End char followed by closing punctuation, then a lowercase word on the
+                # same line: the quotation continues the sentence ("Is it?" he asked.)
+                while pos < text_len and text[pos] in closing:
+                    pos += 1
+                while pos < text_len and text[pos] in " \t":
+                    pos += 1
+                if pos < text_len and text[pos].islower():
+                    continue
+            if contains_sentbreak(context):
                 yield slice(last_break, match.end())
                 # Skip whitespace when setting the next break position
                 if match.group("next_tok"):
@@ -565,7 +651,7 @@ class PunktSentenceTokenizer(PunktBase):
                 else:
                     # No next_tok captured, need to skip whitespace manually
                     pos = match.end()
-                    while pos < len(text) and text[pos].isspace():
+                    while pos < text_len and text[pos].isspace():
                         pos += 1
                     last_break = pos
 
@@ -573,7 +659,15 @@ class PunktSentenceTokenizer(PunktBase):
         if last_break < text_end:
             yield slice(last_break, text_end)
 
-    def _realign_boundaries(self, text: str, slices: List[slice]) -> Iterator[slice]:
+    def _is_line_start_enumerator(self, text: str, pos: int) -> bool:
+        """Check if the period at ``pos`` ends a list enumerator that starts its line."""
+        lo = max(0, pos - 12)
+        nl = text.rfind("\n", lo, pos)
+        if nl == -1 and lo:
+            return False
+        return self._RE_LINE_ENUMERATOR.fullmatch(text, nl + 1, pos + 1) is not None
+
+    def _realign_boundaries(self, text: str, slices: list[slice]) -> Iterator[slice]:
         """
         Realign sentence boundaries to handle trailing punctuation.
 
@@ -585,21 +679,21 @@ class PunktSentenceTokenizer(PunktBase):
             Realigned sentence slices
         """
         realign = 0
-        # Use the original pair_iter as benchmark shows it's more efficient
+        realignment_match = self._lang_vars.re_boundary_realignment.match
         for slice1, slice2 in pair_iter(iter(slices)):
-            slice1 = slice(slice1.start + realign, slice1.stop)
+            start = slice1.start + realign
             if slice2 is None:
-                if text[slice1]:
-                    yield slice1
+                if slice1.stop > start:
+                    yield slice(start, slice1.stop)
                 continue
-            m = self._lang_vars.re_boundary_realignment.match(text[slice2])
+            m = realignment_match(text, slice2.start, slice2.stop)
             if m:
-                yield slice(slice1.start, slice2.start + len(m.group(0).rstrip()))
-                realign = m.end()
+                yield slice(start, slice2.start + len(m.group(0).rstrip()))
+                realign = m.end() - slice2.start
             else:
                 realign = 0
-                if text[slice1]:
-                    yield slice1
+                if slice1.stop > start:
+                    yield slice(start, slice1.stop)
 
     def text_contains_sentbreak(self, text: str) -> bool:
         """
@@ -611,53 +705,257 @@ class PunktSentenceTokenizer(PunktBase):
         Returns:
             True if the text contains a sentence break
         """
-        # Quick check for empty text
         if not text:
             return False
 
-        # Quick check for extremely short text without sentence-ending punctuation
-        if len(text) < 5 and not any(end_char in text for end_char in self._SENT_END_CHARS):
-            return False
-
-        # Quick check for definite sentence breaks (! or ?)
-        # These are almost always sentence breaks and don't need full analysis
-        # Use frozenset for faster lookups with the in operator
-        excl_quest_marks = frozenset(["!", "?"])
-        if "!" in text or "?" in text:
-            # Further optimization: if followed by space + uppercase
-            for i, char in enumerate(text[:-2]):
-                if (
-                    char in excl_quest_marks
-                    and i < len(text) - 2
-                    and text[i + 1].isspace()
-                    and text[i + 2].isupper()
-                ):
-                    return True
-
-        # Tokenize and annotate in one pass
-        tokens = list(self._annotate_tokens(self._tokenize_words(text)))
-
-        # No tokens means no sentence break
-        if not tokens:
-            return False
-
-        # Fast check for sentbreak before looping
-        if any(token.sentbreak for token in tokens):
+        # "!" or "?" followed by whitespace and a letter is always a break
+        if ("!" in text or "?" in text) and self._RE_EXCL_QUEST_BREAK.search(text):
             return True
 
-        # Fast check for ellipsis - if no ellipsis is present, skip the loop
-        if all(not token.ellipsis for token in tokens):
+        if self._uses_decision_engine():
+            return self._strings_contain_sentbreak(text, "", self._decision_state()[1])
+
+        # Tokenize and annotate; the second pass already resolves ellipses, so the
+        # first annotated token with ``sentbreak`` decides.
+        return any(t.sentbreak for t in self._annotate_tokens(self._tokenize_words(text)))
+
+    def _context_contains_sentbreak(self, context: Context) -> bool:
+        """
+        Token-level decision for a candidate context (see ``_match_potential_end_contexts``).
+
+        Only tokens of the ``before`` part can be reported as breaks; the first token
+        of ``after`` is annotated so it can inform the second pass but its own
+        first-pass result is not a decision about this candidate.
+        """
+        before, after = context
+        if ("!" in before or "?" in before) and self._RE_EXCL_QUEST_BREAK.search(before + after):
+            return True
+        n_before = sum(len(self._lang_vars.word_tokenize(line)) for line in before.split("\n"))
+        tokens = list(self._annotate_tokens(self._tokenize_words(before + after)))
+        return any(t.sentbreak for t in tokens[:n_before])
+
+    # ------------------------------------------------------------------
+    # String-level decision engine
+    #
+    # ``text_contains_sentbreak`` on a candidate context used to build PunktToken
+    # objects and run both annotation passes over them. The methods below compute
+    # the same result from token strings: the first pass depends only on the token
+    # string, and the second pass on the pair (token, next token, whether the next
+    # token starts a paragraph). Results are memoized per context string.
+    # ------------------------------------------------------------------
+
+    def _uses_decision_engine(self) -> bool:
+        """Return True if the string-level engine reproduces this tokenizer's annotation."""
+        cls = type(self)
+        supported = _ENGINE_CLASSES.get(cls)
+        if supported is None:
+            supported = all(
+                getattr(cls, name) is getattr(PunktSentenceTokenizer, name)
+                for name in self._ENGINE_HOOKS
+            )
+            _ENGINE_CLASSES[cls] = supported
+        return supported and self._Token is PunktToken
+
+    def _decision_state(
+        self,
+    ) -> tuple[tuple, dict[str, int], dict[Context, bool], Callable[[Context], bool]]:
+        """
+        Return ``(signature, first_pass_memo, context_memo, decide)`` for the parameters.
+
+        ``decide(context)`` is the memoized equivalent of ``text_contains_sentbreak``.
+
+        The memos are rebuilt whenever the signature changes: a different parameter
+        object or language variables, a replaced or resized parameter collection, or
+        an explicit ``clear_decision_cache`` on any tokenizer sharing the parameters.
+        """
+        params = self._params
+        signature = (
+            params,
+            self._lang_vars,
+            params.__dict__.get("_decision_generation", 0),
+            params.abbrev_types,
+            len(params.abbrev_types),
+            params.collocations,
+            len(params.collocations),
+            params.sent_starters,
+            len(params.sent_starters),
+            params.ortho_context,
+            len(params.ortho_context),
+            params.abbrev_break_rates,
+            len(params.abbrev_break_rates),
+            self.BREAK_RATE_HIGH,
+            self.BREAK_RATE_LOW,
+            self.BREAK_RATE_MIN_COUNT,
+        )
+        state = self.__dict__.get("_decision_memo")
+        if state is None or state[0] != signature:
+            first_memo: dict[str, int] = {}
+            context_memo: dict[Context, bool] = {}
+            decide = self._context_decider(first_memo, context_memo)
+            state = (signature, first_memo, context_memo, decide)
+            self.__dict__["_decision_memo"] = state
+        return state
+
+    def _context_decider(
+        self, first_memo: dict[str, int], context_memo: dict[Context, bool]
+    ) -> Callable[[Context], bool]:
+        """Build a memoized ``context -> contains a sentence break`` function."""
+        get = context_memo.get
+        excl_quest = self._RE_EXCL_QUEST_BREAK.search
+        strings_contain_sentbreak = self._strings_contain_sentbreak
+        max_size = self._DECISION_MEMO_SIZE
+        max_len = self._DECISION_CONTEXT_MAX_LEN
+
+        def contains_sentbreak(context: Context) -> bool:
+            result = get(context)
+            if result is None:
+                before, after = context
+                if ("!" in before or "?" in before) and excl_quest(before + after):
+                    result = True
+                else:
+                    result = strings_contain_sentbreak(before, after, first_memo)
+                if len(before) + len(after) <= max_len:
+                    if len(context_memo) >= max_size:
+                        context_memo.clear()
+                    context_memo[context] = result
+            return result
+
+        return contains_sentbreak
+
+    def _strings_contain_sentbreak(
+        self, before: str, after: str, first_memo: dict[str, int]
+    ) -> bool:
+        """
+        String-level equivalent of ``_context_contains_sentbreak``.
+
+        Args:
+            before: The chunk holding the candidate (decided token by token)
+            after: The whitespace and next chunk (its first token is context only)
+            first_memo: Memo of first-pass outcomes by token string
+
+        Returns:
+            True if any token of ``before`` would be annotated as a sentence break
+        """
+        word_tokenize = self._lang_vars.word_tokenize
+        first_pass = self._first_pass_outcome
+        second_pass = self._second_pass_outcome
+        memo_size = self._DECISION_MEMO_SIZE
+
+        def outcome_of(tok: str) -> int:
+            outcome = first_memo.get(tok)
+            if outcome is None:
+                outcome = first_pass(tok)
+                if len(first_memo) < memo_size:
+                    first_memo[tok] = outcome
+            return outcome
+
+        # Tokenize the joined context line by line, exactly as ``_tokenize_words``
+        # does, and keep one token beyond the ``before`` part as context.
+        n_before = sum(len(word_tokenize(line)) for line in before.split("\n"))
+        if not n_before:
             return False
+        seq: list[tuple[str, bool]] = []
+        parastart = False
+        for line in (before + after).split("\n"):
+            if not line.strip():
+                parastart = True
+                continue
+            for tok in word_tokenize(line):
+                seq.append((tok, parastart))
+                parastart = False
+                if len(seq) > n_before:
+                    break
+            if len(seq) > n_before:
+                break
 
-        # Special handling for ellipsis followed by capitalized word
-        # Only run this if we have at least two tokens
-        if len(tokens) > 1:
-            # Check only tokens that are marked as ellipsis
-            for i, token in enumerate(tokens[:-1]):  # Skip the last token
-                if token.ellipsis and tokens[i + 1].first_upper:
-                    return True
+        prev, _ = seq[0]
+        prev_outcome = outcome_of(prev)
+        for i in range(1, len(seq)):
+            tok, tok_parastart = seq[i]
+            outcome = outcome_of(tok)
+            if prev_outcome and second_pass(prev, prev_outcome, tok, outcome, tok_parastart):
+                return True
+            if i >= n_before:
+                return False
+            prev, prev_outcome = tok, outcome
+        # The last token keeps its first-pass annotation
+        return prev_outcome == _FP_BREAK
 
-        return False
+    def _first_pass_outcome(self, tok: str) -> int:
+        """String-level ``_first_pass_annotation``: one of the ``_FP_*`` outcomes."""
+        if tok in self._lang_vars.sent_end_chars:
+            return _FP_BREAK
+        if _check_is_ellipsis(tok):
+            return _FP_ELLIPSIS
+        period_final, _, valid_abbrev_candidate, _, _ = _derived(tok)
+        if not period_final or tok.endswith(".."):
+            return _FP_NONE
+        if valid_abbrev_candidate and is_abbreviation(self._params.abbrev_types, tok[:-1].lower()):
+            return _FP_ABBR
+        return _FP_BREAK
+
+    def _second_pass_outcome(
+        self, tok1: str | None, outcome1: int, tok2: str, outcome2: int, parastart2: bool
+    ) -> bool:
+        """
+        String-level ``_second_pass_annotation``: the final ``sentbreak`` of ``tok1``.
+
+        Args:
+            tok1: The token being decided (non-None whenever ``outcome1`` is set)
+            outcome1: First-pass outcome of ``tok1``
+            tok2: The following token
+            outcome2: First-pass outcome of ``tok2``
+            parastart2: Whether ``tok2`` starts a paragraph
+        """
+        _, type2, _, first_upper2, first_lower2 = _derived(tok2)
+        if outcome1 == _FP_ELLIPSIS:
+            return first_upper2
+        assert tok1 is not None
+        period_final1, type1, _, _, _ = _derived(tok1)
+        if not period_final1:
+            return outcome1 == _FP_BREAK
+        typ = type1[:-1] if type1.endswith(".") and len(type1) > 1 else type1
+        if outcome2 == _FP_BREAK and type2.endswith(".") and len(type2) > 1:
+            next_typ = type2[:-1]
+        else:
+            next_typ = type2
+
+        if parastart2 and first_upper2:
+            return True
+        is_abbr = outcome1 == _FP_ABBR
+        if is_abbr and typ in self._TITLE_ABBREVS and first_upper2:
+            return False
+        params = self._params
+        if (typ, next_typ) in params.collocations:
+            return False
+        is_initial = _check_is_initial(tok1)
+        if is_abbr and not is_initial:
+            if first_upper2 and params.abbrev_break_rates:
+                rate_break = self._break_rate_decision(typ)
+                if rate_break is not None:
+                    return rate_break
+            if tok2 not in self._PUNCT_CHARS and (
+                ortho_heuristic(params.ortho_context.get(next_typ, 0), first_upper2, first_lower2)
+                is True
+            ):
+                return True
+            if first_upper2 and next_typ in params.sent_starters:
+                return True
+        if is_initial or typ == "##number##":
+            if tok2 in self._PUNCT_CHARS:
+                return False
+            ortho = params.ortho_context.get(next_typ, 0)
+            is_sent_starter = ortho_heuristic(ortho, first_upper2, first_lower2)
+            if is_sent_starter is False:
+                return False
+            if (
+                is_sent_starter == "unknown"
+                and is_initial
+                and first_upper2
+                and not (ortho & ORTHO_LC)
+            ):
+                return False
+        return outcome1 == _FP_BREAK
 
     def _annotate_tokens(self, tokens: Iterator[PunktToken]) -> Iterator[PunktToken]:
         """
@@ -734,6 +1032,16 @@ class PunktSentenceTokenizer(PunktBase):
         next_typ = token2.type_no_sentperiod
         tok_is_initial = token1.is_initial
 
+        # A period-final token followed by a paragraph break and a capitalized word
+        if token2.parastart and token2.first_upper:
+            token1.sentbreak = True
+            return "Paragraph break before uppercase word"
+
+        # A prenominal title ("Dr.", "Mr.") before a capitalized word never ends a sentence
+        if token1.abbr and typ in self._TITLE_ABBREVS and token2.first_upper:
+            token1.sentbreak = False
+            return "Title before capitalized word"
+
         # Collocation heuristic: if the pair is known, mark token as abbreviation.
         if (typ, next_typ) in self._params.collocations:
             token1.sentbreak = False
@@ -742,6 +1050,11 @@ class PunktSentenceTokenizer(PunktBase):
 
         # If token is marked as an abbreviation, decide based on orthographic evidence.
         if token1.abbr and (not tok_is_initial):
+            if token2.first_upper:
+                rate_break = self._break_rate_decision(typ)
+                if rate_break is not None:
+                    token1.sentbreak = rate_break
+                    return f"Abbreviation with {'high' if rate_break else 'low'} break rate"
             is_sent_starter = self._ortho_heuristic(token2)
             if is_sent_starter is True:
                 token1.sentbreak = True
@@ -750,23 +1063,6 @@ class PunktSentenceTokenizer(PunktBase):
             if token2.first_upper and self._is_sent_starter(next_typ):
                 token1.sentbreak = True
                 return "Abbreviation with sentence starter"
-
-        # **[NEW]** General-purpose sentence break rule.
-        # If a token is not an abbreviation and it's not an initial,
-        # and the next token starts with an uppercase letter, then it's a sentence break.
-        # This is a strong, high-precision indicator.
-        if not token1.abbr and not tok_is_initial and token2.first_upper:
-            is_sent_starter = self._ortho_heuristic(token2)
-            if is_sent_starter is True:
-                token1.sentbreak = True
-                return "General rule: non-abbreviation followed by orthographic sentence starter"
-            if self._is_sent_starter(next_typ):
-                token1.sentbreak = True
-                return "General rule: non-abbreviation followed by known sentence starter"
-            # Default catch-all for uppercase words after a period.
-            if is_sent_starter == "unknown":
-                token1.sentbreak = True
-                return "General rule: non-abbreviation followed by uppercase word"
 
         # Check for initials or ordinals.
         if tok_is_initial or typ == "##number##":
@@ -786,7 +1082,28 @@ class PunktSentenceTokenizer(PunktBase):
                 return "Initial with special orthographic heuristic"
         return None
 
-    def _ortho_heuristic(self, token: PunktToken) -> Union[bool, str]:
+    def _break_rate_decision(self, typ: str) -> bool | None:
+        """
+        Decide a break after abbreviation ``typ`` before a capitalized word from its rate.
+
+        Args:
+            typ: The abbreviation type (lowercase, without the trailing period)
+
+        Returns:
+            True (break) or False (no break) when the learned break rate is decisive,
+            None to fall back to orthographic and sentence-starter evidence
+        """
+        counts = self._params.abbrev_break_rates.get(typ)
+        if counts is None or counts[0] < self.BREAK_RATE_MIN_COUNT:
+            return None
+        rate = counts[1] / counts[0]
+        if rate >= self.BREAK_RATE_HIGH:
+            return True
+        if self.BREAK_RATE_LOW is not None and rate <= self.BREAK_RATE_LOW:
+            return False
+        return None
+
+    def _ortho_heuristic(self, token: PunktToken) -> bool | str:
         """
         Apply orthographic heuristics to determine if a token starts a sentence.
 
@@ -796,40 +1113,14 @@ class PunktSentenceTokenizer(PunktBase):
         Returns:
             True if the token starts a sentence, False if not, "unknown" if uncertain
         """
-        # Simple case for punctuation tokens - use set lookup instead of tuple comparison
-        if token.tok in (";", ":", ",", ".", "!", "?"):
+        if token.tok in self._PUNCT_CHARS:
             return False
-
-        # Get orthographic context
         ortho = self._params.ortho_context.get(token.type_no_sentperiod, 0)
-
-        # Use module-level cached function
-        return cached_ortho_heuristic(
-            ortho, token.type_no_sentperiod, token.first_upper, token.first_lower
-        )
-
-    def _cached_ortho_heuristic(
-        self, type_no_sentperiod: str, first_upper: bool, first_lower: bool
-    ) -> Union[bool, str]:
-        """
-        Wrapper for the cached implementation of orthographic heuristics.
-
-        Args:
-            type_no_sentperiod: The token type without sentence-final period
-            first_upper: Whether the first character is uppercase
-            first_lower: Whether the first character is lowercase
-
-        Returns:
-            True if the token starts a sentence, False if not, "unknown" if uncertain
-        """
-        ortho = self._params.ortho_context.get(type_no_sentperiod, 0)
-        return cached_ortho_heuristic(ortho, type_no_sentperiod, first_upper, first_lower)
+        return ortho_heuristic(ortho, token.first_upper, token.first_lower)
 
     def _is_sent_starter(self, token_type: str) -> bool:
         """
         Check if a token type is a known sentence starter.
-
-        This is a wrapper around the module-level cached function.
 
         Args:
             token_type: The token type to check
@@ -837,11 +1128,4 @@ class PunktSentenceTokenizer(PunktBase):
         Returns:
             True if the token type is a known sentence starter, False otherwise
         """
-        # Get sentence starters set
-        sent_starters = self._params.sent_starters
-
-        # Convert to frozenset if needed for caching
-        if not isinstance(sent_starters, frozenset):
-            sent_starters = frozenset(sent_starters)
-
-        return is_sent_starter(sent_starters, token_type)
+        return token_type in self._params.sent_starters

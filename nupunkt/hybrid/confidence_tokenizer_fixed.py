@@ -6,7 +6,7 @@ with the base Punkt algorithm instead of replacing it.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, TypedDict
 
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
@@ -18,7 +18,7 @@ class ConfidenceScore:
     """Container for confidence scoring components."""
 
     value: float
-    components: Dict[str, float]
+    components: dict[str, float]
     base_decision: bool  # What the base Punkt algorithm decided
     final_decision: bool  # What we decided after confidence adjustment
     category: str  # Description of the decision
@@ -41,7 +41,7 @@ class ConfidenceCalculator:
 
     def calculate_confidence(
         self, token: PunktToken, next_token: PunktToken | None, base_sentbreak: bool
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Calculate individual confidence components."""
         scores = {}
 
@@ -163,7 +163,7 @@ class ConfidenceCalculator:
 
         return max(0.0, min(1.0, score))
 
-    def get_total_confidence(self, scores: Dict[str, float]) -> float:
+    def get_total_confidence(self, scores: dict[str, float]) -> float:
         """Calculate weighted total confidence score."""
         total = sum(
             scores.get(component, 0.0) * self.weights.get(component, 0.0)
@@ -186,7 +186,7 @@ class FixedConfidenceSentenceTokenizer(PunktSentenceTokenizer):
         confidence_threshold: float = 0.5,
         override_threshold_high: float = 0.8,  # Only override if very confident
         override_threshold_low: float = 0.2,  # Only override if very unconfident
-        component_weights: Dict[str, float] | None = None,
+        component_weights: dict[str, float] | None = None,
         debug: bool = False,
         **kwargs,
     ):
@@ -302,8 +302,17 @@ class FixedConfidenceSentenceTokenizer(PunktSentenceTokenizer):
         )
 
 
+class _DomainPreset(TypedDict):
+    """Per-domain preset for :func:`create_fixed_domain_tokenizer`."""
+
+    confidence_threshold: float
+    override_threshold_high: float
+    override_threshold_low: float
+    component_weights: dict[str, float] | None
+
+
 # Updated domain presets with better thresholds
-DOMAIN_PRESETS = {
+DOMAIN_PRESETS: dict[str, _DomainPreset] = {
     "general": {
         "confidence_threshold": 0.5,
         "override_threshold_high": 0.8,

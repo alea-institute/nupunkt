@@ -11,15 +11,17 @@ from functools import lru_cache
 from pathlib import Path
 
 # Import for type annotations
-from typing import Any, List, Literal, Tuple, Union, overload
+from typing import Any, Literal, overload
 
 from nupunkt._version import __version__
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken
+from nupunkt.document import Document, Paragraph, Sentence
 
 # Models
 from nupunkt.models import load_default_model
+from nupunkt.segmentation import Segment, Segmenter, WordSegmenter, contiguous
 from nupunkt.tokenizers.paragraph_tokenizer import PunktParagraphTokenizer
 
 # Tokenizers
@@ -56,6 +58,13 @@ def load(model: str) -> PunktSentenceTokenizer:
     Raises:
         FileNotFoundError: If the model file doesn't exist
         ValueError: If the model format is unsupported
+
+    Note:
+        Results are cached, so repeated calls with the same argument return the
+        same tokenizer instance. Calling ``add_abbreviation`` or
+        ``remove_abbreviation`` on it therefore also affects ``sent_tokenize``
+        and every other caller using that model name. Construct a
+        ``PunktSentenceTokenizer`` directly if you need an independent instance.
     """
     # Handle default model
     if model == "default":
@@ -124,7 +133,7 @@ def sent_tokenize(
     dynamic_abbrev: bool = True,
     return_confidence: bool = False,
     debug: bool = False,
-) -> Union[List[str], List[Tuple[str, float]]]:
+) -> list[str] | list[tuple[str, float]]:
     """
     Tokenize text into sentences.
 
@@ -200,7 +209,7 @@ def sent_tokenize_adaptive(
     return_confidence: bool = False,
     debug: bool = False,
     **kwargs,
-) -> Union[List[str], List[Tuple[str, float]]]:
+) -> list[str] | list[tuple[str, float]]:
     """
     Adaptive sentence tokenization with confidence scoring.
 
@@ -238,7 +247,7 @@ def sent_tokenize_adaptive(
 
 
 # Function for paragraph tokenization
-def para_tokenize(text: str) -> List[str]:
+def para_tokenize(text: str) -> list[str]:
     """
     Tokenize text into paragraphs using the default pre-trained model.
 
@@ -256,7 +265,7 @@ def para_tokenize(text: str) -> List[str]:
 
 
 # Function for getting sentence spans
-def sent_spans(text: str) -> List[Tuple[int, int]]:
+def sent_spans(text: str) -> list[tuple[int, int]]:
     """
     Get sentence spans (start, end character positions) using the default pre-trained model.
 
@@ -275,7 +284,7 @@ def sent_spans(text: str) -> List[Tuple[int, int]]:
 
 
 # Function for getting sentence spans with text
-def sent_spans_with_text(text: str) -> List[Tuple[str, Tuple[int, int]]]:
+def sent_spans_with_text(text: str) -> list[tuple[str, tuple[int, int]]]:
     """
     Get sentences with their spans using the default pre-trained model.
 
@@ -294,7 +303,7 @@ def sent_spans_with_text(text: str) -> List[Tuple[str, Tuple[int, int]]]:
 
 
 # Function for getting paragraph spans
-def para_spans(text: str) -> List[Tuple[int, int]]:
+def para_spans(text: str) -> list[tuple[int, int]]:
     """
     Get paragraph spans (start, end character positions) using the default pre-trained model.
 
@@ -313,7 +322,7 @@ def para_spans(text: str) -> List[Tuple[int, int]]:
 
 
 # Function for getting paragraph spans with text
-def para_spans_with_text(text: str) -> List[Tuple[str, Tuple[int, int]]]:
+def para_spans_with_text(text: str) -> list[tuple[str, tuple[int, int]]]:
     """
     Get paragraphs with their spans using the default pre-trained model.
 
@@ -338,7 +347,7 @@ def sent_spans_adaptive(
     model: str = "default",
     dynamic_abbrev: bool = True,
     **kwargs,
-) -> List[Tuple[int, int]]:
+) -> list[tuple[int, int]]:
     """
     Get sentence spans using adaptive tokenization with confidence scoring.
 
@@ -381,8 +390,7 @@ def sent_spans_with_text_adaptive(
     dynamic_abbrev: bool = True,
     return_confidence: Literal[False] = False,
     **kwargs,
-) -> List[Tuple[str, Tuple[int, int]]]:
-    ...
+) -> list[tuple[str, tuple[int, int]]]: ...
 
 
 @overload
@@ -393,8 +401,7 @@ def sent_spans_with_text_adaptive(
     dynamic_abbrev: bool = True,
     return_confidence: Literal[True] = True,
     **kwargs,
-) -> List[Tuple[str, Tuple[int, int], float]]:
-    ...
+) -> list[tuple[str, tuple[int, int], float]]: ...
 
 
 def sent_spans_with_text_adaptive(
@@ -404,7 +411,7 @@ def sent_spans_with_text_adaptive(
     dynamic_abbrev: bool = True,
     return_confidence: bool = False,
     **kwargs,
-) -> Union[List[Tuple[str, Tuple[int, int]]], List[Tuple[str, Tuple[int, int], float]]]:
+) -> list[tuple[str, tuple[int, int]]] | list[tuple[str, tuple[int, int], float]]:
     """
     Get sentences with their spans using adaptive tokenization.
 
@@ -470,6 +477,292 @@ def sent_spans_with_text_adaptive(
         return tokenizer.tokenize_with_spans(text)
 
 
+# ---------------------------------------------------------------------------
+# Standard segmentation interface
+#
+# One shape for every level (word, sentence, paragraph):
+#   <level>s(text)          -> list[str]
+#   <level>_spans(text)     -> list[tuple[int, int]]
+#   <level>_segments(text)  -> list[Segment]   (text, start, end)
+# and ``segmenter(level)`` for a reusable object with generator forms
+# (``iter_segments``, ``iter_texts``, ``iter_spans``).
+#
+# Spans are tight: text[start:end] == segment text, whitespace stays in the
+# gaps. Use ``contiguous(segments, text)`` for gap-free coverage.
+# ---------------------------------------------------------------------------
+
+SegmentLevel = Literal["word", "sentence", "paragraph"]
+
+_WORD_SEGMENTER = WordSegmenter()
+
+
+@lru_cache(maxsize=64)
+def _get_paragraph_tokenizer_for(model: str) -> PunktParagraphTokenizer:
+    """Get a paragraph tokenizer for a named model, loading it only once."""
+    return PunktParagraphTokenizer(load(model))
+
+
+def segmenter(
+    level: SegmentLevel = "sentence",
+    model: str = "default",
+    adaptive: bool = False,
+    confidence_threshold: float = 0.7,
+    dynamic_abbrev: bool = True,
+) -> Segmenter:
+    """
+    Get a reusable segmenter for a level of segmentation.
+
+    The returned object exposes ``segments``, ``texts`` and ``spans`` (lists) and
+    ``iter_segments``, ``iter_texts`` and ``iter_spans`` (generators).
+
+    Args:
+        level: "word", "sentence" or "paragraph"
+        model: Model to use for sentences and paragraphs - "default", a path or a name
+        adaptive: Use the adaptive sentence tokenizer (sentence level only)
+        confidence_threshold: Decision threshold for adaptive mode (0.0-1.0)
+        dynamic_abbrev: Discover abbreviation patterns at runtime (adaptive mode)
+
+    Returns:
+        A segmenter for the requested level
+
+    Examples:
+        >>> seg = segmenter("sentence")
+        >>> for sentence in seg.iter_segments(text):
+        ...     print(sentence.start, sentence.end, sentence.text)
+    """
+    if level == "word":
+        return _WORD_SEGMENTER
+    if level == "sentence":
+        if adaptive:
+            return _get_adaptive_tokenizer(model, confidence_threshold, dynamic_abbrev)
+        return load(model)
+    if level == "paragraph":
+        return _get_paragraph_tokenizer_for(model)
+    raise ValueError(
+        f"Unknown segmentation level {level!r}; expected 'word', 'sentence' or 'paragraph'"
+    )
+
+
+# --- words -----------------------------------------------------------------
+
+
+def words(text: str) -> list[str]:
+    """
+    Split text into words using Punkt's word tokenizer.
+
+    Trailing periods stay attached ("Dr.") and possessives are one token
+    ("Smith's"); these are the tokens the sentence tokenizer reasons about.
+
+    Args:
+        text: The text to segment
+
+    Returns:
+        A list of words
+    """
+    return _WORD_SEGMENTER.texts(text)
+
+
+def word_spans(text: str) -> list[tuple[int, int]]:
+    """
+    Get the (start, end) character span of each word.
+
+    Args:
+        text: The text to segment
+
+    Returns:
+        A list of (start, end) tuples; ``text[start:end]`` is the word
+    """
+    return _WORD_SEGMENTER.spans(text)
+
+
+def word_segments(text: str) -> list[Segment]:
+    """
+    Get each word with its character span.
+
+    Args:
+        text: The text to segment
+
+    Returns:
+        A list of ``Segment(text, start, end)``
+    """
+    return _WORD_SEGMENTER.segments(text)
+
+
+# --- sentences ---------------------------------------------------------------
+
+
+def sentences(
+    text: str,
+    model: str = "default",
+    adaptive: bool = False,
+    confidence_threshold: float = 0.7,
+    dynamic_abbrev: bool = True,
+) -> list[str]:
+    """
+    Split text into sentences.
+
+    Args:
+        text: The text to segment
+        model: Model to use - "default", a file path, or a model name
+        adaptive: Use the adaptive tokenizer with dynamic abbreviation detection
+        confidence_threshold: Decision threshold for adaptive mode (0.0-1.0)
+        dynamic_abbrev: Discover abbreviation patterns at runtime (adaptive mode)
+
+    Returns:
+        A list of sentences, without surrounding whitespace
+    """
+    return segmenter("sentence", model, adaptive, confidence_threshold, dynamic_abbrev).texts(text)
+
+
+def sentence_spans(
+    text: str,
+    model: str = "default",
+    adaptive: bool = False,
+    confidence_threshold: float = 0.7,
+    dynamic_abbrev: bool = True,
+) -> list[tuple[int, int]]:
+    """
+    Get the (start, end) character span of each sentence.
+
+    Spans are tight: ``text[start:end]`` is the sentence with no surrounding
+    whitespace. Use ``contiguous()`` for gap-free spans.
+
+    Args:
+        text: The text to segment
+        model: Model to use - "default", a file path, or a model name
+        adaptive: Use the adaptive tokenizer with dynamic abbreviation detection
+        confidence_threshold: Decision threshold for adaptive mode (0.0-1.0)
+        dynamic_abbrev: Discover abbreviation patterns at runtime (adaptive mode)
+
+    Returns:
+        A list of (start, end) tuples
+    """
+    return segmenter("sentence", model, adaptive, confidence_threshold, dynamic_abbrev).spans(text)
+
+
+def sentence_segments(
+    text: str,
+    model: str = "default",
+    adaptive: bool = False,
+    confidence_threshold: float = 0.7,
+    dynamic_abbrev: bool = True,
+) -> list[Segment]:
+    """
+    Get each sentence with its character span.
+
+    Args:
+        text: The text to segment
+        model: Model to use - "default", a file path, or a model name
+        adaptive: Use the adaptive tokenizer with dynamic abbreviation detection
+        confidence_threshold: Decision threshold for adaptive mode (0.0-1.0)
+        dynamic_abbrev: Discover abbreviation patterns at runtime (adaptive mode)
+
+    Returns:
+        A list of ``Segment(text, start, end)``
+    """
+    return segmenter("sentence", model, adaptive, confidence_threshold, dynamic_abbrev).segments(
+        text
+    )
+
+
+# --- paragraphs --------------------------------------------------------------
+
+
+def paragraphs(text: str, model: str = "default") -> list[str]:
+    """
+    Split text into paragraphs.
+
+    A paragraph break is a sentence boundary followed by a blank line.
+
+    Args:
+        text: The text to segment
+        model: Model to use - "default", a file path, or a model name
+
+    Returns:
+        A list of paragraphs, without surrounding whitespace
+    """
+    return _get_paragraph_tokenizer_for(model).texts(text)
+
+
+def paragraph_spans(text: str, model: str = "default") -> list[tuple[int, int]]:
+    """
+    Get the (start, end) character span of each paragraph.
+
+    Spans are tight: ``text[start:end]`` is the paragraph with no surrounding
+    whitespace. Use ``contiguous()`` for gap-free spans.
+
+    Args:
+        text: The text to segment
+        model: Model to use - "default", a file path, or a model name
+
+    Returns:
+        A list of (start, end) tuples
+    """
+    return _get_paragraph_tokenizer_for(model).spans(text)
+
+
+def paragraph_segments(text: str, model: str = "default") -> list[Segment]:
+    """
+    Get each paragraph with its character span.
+
+    Args:
+        text: The text to segment
+        model: Model to use - "default", a file path, or a model name
+
+    Returns:
+        A list of ``Segment(text, start, end)``
+    """
+    return _get_paragraph_tokenizer_for(model).segments(text)
+
+
+# --- all levels in one pass ------------------------------------------------------
+
+
+def segment(
+    text: str,
+    model: str | PunktSentenceTokenizer = "default",
+    adaptive: bool = False,
+    confidence_threshold: float = 0.7,
+    dynamic_abbrev: bool = True,
+) -> Document:
+    """
+    Segment text into paragraphs, sentences and words in a single pass.
+
+    Sentence segmentation runs once; paragraphs are derived from the same
+    sentence boundaries (a boundary followed by a blank line) and words are
+    computed lazily per sentence. The flat lists match the per-level functions:
+    ``doc.paragraphs == paragraph_segments(text)``,
+    ``doc.sentences == sentence_segments(text)`` and
+    ``doc.words == word_segments(text)``.
+
+    Args:
+        text: The text to segment
+        model: "default", a file path, a model name, or a ``PunktSentenceTokenizer``
+        adaptive: Use the adaptive sentence tokenizer (ignored when ``model`` is a
+            tokenizer object)
+        confidence_threshold: Decision threshold for adaptive mode (0.0-1.0)
+        dynamic_abbrev: Discover abbreviation patterns at runtime (adaptive mode)
+
+    Returns:
+        A :class:`Document` with ``paragraphs`` -> ``sentences`` -> ``words``
+
+    Examples:
+        >>> doc = segment("First one. Second one.\n\nNew paragraph.")
+        >>> [len(p.sentences) for p in doc.paragraphs]
+        [2, 1]
+        >>> doc.sentences[1].words[0]
+        Segment(text='Second', start=11, end=17)
+    """
+    tokenizer: PunktSentenceTokenizer
+    if not isinstance(model, str):
+        tokenizer = model
+    elif adaptive:
+        tokenizer = _get_adaptive_tokenizer(model, confidence_threshold, dynamic_abbrev)
+    else:
+        tokenizer = load(model)
+    return Document.from_tokenizer(text, tokenizer)
+
+
 __all__ = [
     "__version__",
     "PunktParameters",
@@ -480,6 +773,26 @@ __all__ = [
     "PunktParagraphTokenizer",
     "load",
     "load_default_model",
+    # Standard segmentation interface
+    "Segment",
+    "Segmenter",
+    "WordSegmenter",
+    "contiguous",
+    "segmenter",
+    "words",
+    "word_spans",
+    "word_segments",
+    "sentences",
+    "sentence_spans",
+    "sentence_segments",
+    "paragraphs",
+    "paragraph_spans",
+    "paragraph_segments",
+    "segment",
+    "Document",
+    "Paragraph",
+    "Sentence",
+    # Legacy interface (kept for backward compatibility)
     "sent_tokenize",
     "sent_tokenize_adaptive",
     "sent_spans",
