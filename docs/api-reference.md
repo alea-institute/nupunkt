@@ -8,7 +8,7 @@ Complete reference for nupunkt's Python API.
 import nupunkt
 
 # Version
-nupunkt.__version__  # '0.7.0'
+nupunkt.__version__  # '0.8.0'
 
 # Functions
 nupunkt.sent_tokenize()
@@ -120,6 +120,32 @@ sentence and every sentence inside its paragraph.
 A paragraph ends at a sentence boundary followed by a blank line, exactly as in
 `PunktParagraphTokenizer`; `nupunkt.document.is_paragraph_break(text, pos)`
 exposes that rule.
+
+### Layout options
+
+`sentences`, `sentence_spans`, `sentence_segments`, `segment` and the `iter_segments`
+family of `PunktSentenceTokenizer` / `AdaptiveTokenizer` take two keyword options
+(see [layout.md](layout.md)):
+
+| Option | Default | Effect |
+|---|---|---|
+| `paragraph_breaks` | `True` | Blank lines are hard sentence boundaries; paragraphs are the blocks between them. A sentence still continues across a blank line when the line before has no terminal punctuation and either ends with a hyphen or the next block starts lowercase (page breaks). |
+| `line_breaks` | `False` | Also cut at a single newline after a heading-like line or before a list-marker line. |
+
+The defaults can be changed per tokenizer instance through the `paragraph_breaks` and
+`line_breaks` attributes. `PunktParagraphTokenizer.iter_segments` accepts
+`paragraph_breaks` too. The legacy `tokenize`, `span_tokenize`, `tokenize_with_spans`
+and module functions never apply layout rules.
+
+### blank_page_furniture
+
+```python
+blank_page_furniture(text: str) -> str
+```
+
+Replaces page-number lines (`12`, `- 12 -`, `[12]`, `Page 3 of 10`, `p. 12`) and form
+feeds with spaces of the same length, so spans computed on the result index the
+original text.
 
 ### Relationship to the legacy functions
 
@@ -486,6 +512,26 @@ Return sentence spans as (start, end) tuples.
 tokenize_with_spans(text: str, realign_boundaries: bool = True) -> List[Tuple[str, Tuple[int, int]]]
 ```
 Return sentences with their character spans. Spans are contiguous and cover the entire text.
+
+##### abbreviations
+
+```python
+abbreviations -> frozenset[str]
+```
+
+Read-only snapshot of the known abbreviations (lowercased, no trailing period,
+internal periods kept, `"..."` for the ellipsis). Prefer this over reading
+private attributes.
+
+##### parameters
+
+```python
+parameters -> PunktParameters
+```
+
+The live `PunktParameters` object backing the tokenizer. Edits through it take
+effect immediately; after in-place edits that do not change any collection's
+size, call `clear_decision_cache()`.
 
 ##### add_abbreviation
 ```python

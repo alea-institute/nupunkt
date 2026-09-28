@@ -23,7 +23,8 @@ from nupunkt.core.constants import (
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.parameters import PunktParameters
 from nupunkt.core.tokens import PunktToken, _check_is_ellipsis, _check_is_initial, _derived
-from nupunkt.segmentation import Segment, SegmenterMixin, tight
+from nupunkt.layout import layout_segments
+from nupunkt.segmentation import Segment, SegmenterMixin
 from nupunkt.trainers.base_trainer import PunktTrainer
 from nupunkt.utils.iteration import pair_iter
 
@@ -160,6 +161,15 @@ class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
         ]
     )
 
+    # Opt-in: treat "!" or "?" followed by a lowercase word as sentence-internal ("Yahoo! in").
+    # Off by default: it costs recall on informal web text where sentences start lowercase.
+    EXCL_QUEST_LOWERCASE_CONTINUES: bool = False
+
+    # Words that continue a sentence after an ellipsis despite being capitalized
+    _ELLIPSIS_CONTINUERS = frozenset(
+        ["I", "I'm", "I'll", "I'd", "I've", "I\u2019m", "I\u2019ll", "I\u2019d", "I\u2019ve"]
+    )
+
     # Bounds of the string-level decision memos (see ``_decision_state``)
     _DECISION_MEMO_SIZE = 32768
     _DECISION_CONTEXT_MAX_LEN = 200
@@ -195,6 +205,28 @@ class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
         while i < text_len and text[i].isspace():
             i += 1
         return i < text_len and text[i].isupper()
+
+    @property
+    def abbreviations(self) -> frozenset[str]:
+        """
+        The abbreviations this tokenizer knows, lowercased and without trailing periods.
+
+        This is a read-only snapshot; use ``add_abbreviation`` / ``remove_abbreviation``
+        to change the set. Multi-part abbreviations keep their internal periods
+        (``"u.s.c"``), and ``"..."`` stands for the ellipsis.
+        """
+        return frozenset(self._params.abbrev_types)
+
+    @property
+    def parameters(self) -> PunktParameters:
+        """
+        The trained parameters backing this tokenizer.
+
+        Mutating the returned object changes this tokenizer (and any other tokenizer
+        sharing it). After in-place edits that keep every collection's size, call
+        ``clear_decision_cache()``.
+        """
+        return self._params
 
     def add_abbreviation(self, abbrev: str) -> None:
         """Add a single abbreviation to the tokenizer.
@@ -418,16 +450,36 @@ class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
             trainer._params = self._params
             trainer._finalized = True
 
-    def iter_segments(self, text: str) -> Iterator[Segment]:
+    # Layout defaults for the segmentation interface (``iter_segments`` and the
+    # methods derived from it). The legacy ``tokenize`` / ``span_tokenize`` methods
+    # never apply layout rules. See :mod:`nupunkt.layout`.
+    paragraph_breaks: bool = True
+    line_breaks: bool = False
+
+    def iter_segments(self, text: str, **options: Any) -> Iterator[Segment]:
         """
         Yield each sentence of ``text`` with its tight character span.
 
         This is the primitive behind ``segments``, ``texts``, ``spans`` and their
         ``iter_*`` forms (see :mod:`nupunkt.segmentation`). Unlike ``span_tokenize``,
-        the spans never include surrounding whitespace.
+        the spans never include surrounding whitespace, and layout rules apply.
+
+        Args:
+            text: The text to segment
+            paragraph_breaks: Blank lines are hard sentence boundaries (default:
+                the instance attribute, ``True``)
+            line_breaks: Heading and list-item line breaks are boundaries too
+                (default: the instance attribute, ``False``)
         """
-        raw = (Segment(text[start:end], start, end) for start, end in self.span_tokenize(text))
-        yield from tight(raw, text)
+        paragraph_breaks = options.pop("paragraph_breaks", None)
+        line_breaks = options.pop("line_breaks", None)
+        if options:
+            raise TypeError(f"unexpected options: {sorted(options)}")
+        if paragraph_breaks is None:
+            paragraph_breaks = self.paragraph_breaks
+        if line_breaks is None:
+            line_breaks = self.line_breaks
+        yield from layout_segments(text, self.span_tokenize, paragraph_breaks, line_breaks)
 
     def tokenize(self, text: str, realign_boundaries: bool = True) -> list[str]:
         """
@@ -630,8 +682,28 @@ class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
             if text[pos] == "." and self._is_line_start_enumerator(text, pos):
                 continue
             pos = match.end()
-            # A run of terminal punctuation ("?!", "!!!") ends the sentence at its last char
+            # A run of terminal punctuation ("?!", "!!!", "! ! !") ends the sentence at
+            # its last character
             if pos < text_len and text[pos] in "!?":
+                continue
+            k = pos
+            while k < text_len and text[k] in " \t":
+                k += 1
+            if (
+                k > pos
+                and k < text_len
+                and text[k] in "!?"
+                and (k + 1 == text_len or text[k + 1].isspace() or text[k + 1] in "!?")
+            ):
+                continue
+            # "!" or "?" followed by a lowercase word on the same line is not a break
+            # ("Yahoo! in 1995", "he asked, what? and left")
+            if (
+                self.EXCL_QUEST_LOWERCASE_CONTINUES
+                and text[pos - 1] in "!?"
+                and k < text_len
+                and text[k].islower()
+            ):
                 continue
             if pos < text_len and text[pos] in closing:
                 # End char followed by closing punctuation, then a lowercase word on the
@@ -828,6 +900,10 @@ class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
         """
         String-level equivalent of ``_context_contains_sentbreak``.
 
+        Tokens made only of closing punctuation (``"``, ``)``, ``\u201d`` ...) never decide
+        and are transparent when pairing, so an abbreviation followed by a closing
+        quote sees the word after the quote as its successor.
+
         Args:
             before: The chunk holding the candidate (decided token by token)
             after: The whitespace and next chunk (its first token is context only)
@@ -840,6 +916,7 @@ class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
         first_pass = self._first_pass_outcome
         second_pass = self._second_pass_outcome
         memo_size = self._DECISION_MEMO_SIZE
+        closing = _CLOSING_CHARS
 
         def outcome_of(tok: str) -> int:
             outcome = first_memo.get(tok)
@@ -849,37 +926,47 @@ class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
                     first_memo[tok] = outcome
             return outcome
 
-        # Tokenize the joined context line by line, exactly as ``_tokenize_words``
-        # does, and keep one token beyond the ``before`` part as context.
         n_before = sum(len(word_tokenize(line)) for line in before.split("\n"))
         if not n_before:
             return False
-        seq: list[tuple[str, bool]] = []
+        # (token, starts a paragraph, belongs to ``before``), closers dropped, and at
+        # most one token from ``after``; tokenized line by line like ``_tokenize_words``
+        seq: list[tuple[str, bool, bool]] = []
         parastart = False
+        seen = 0
+        done = False
         for line in (before + after).split("\n"):
             if not line.strip():
                 parastart = True
                 continue
             for tok in word_tokenize(line):
-                seq.append((tok, parastart))
+                is_before = seen < n_before
+                seen += 1
+                if all(c in closing for c in tok):
+                    continue
+                seq.append((tok, parastart, is_before))
                 parastart = False
-                if len(seq) > n_before:
+                if not is_before:
+                    done = True
                     break
-            if len(seq) > n_before:
+            if done:
                 break
 
-        prev, _ = seq[0]
-        prev_outcome = outcome_of(prev)
-        for i in range(1, len(seq)):
-            tok, tok_parastart = seq[i]
+        last = len(seq) - 1
+        for i, (tok, _, is_before) in enumerate(seq):
+            if not is_before:
+                break
             outcome = outcome_of(tok)
-            if prev_outcome and second_pass(prev, prev_outcome, tok, outcome, tok_parastart):
+            if not outcome:
+                continue
+            if i < last:
+                tok2, parastart2, _ = seq[i + 1]
+                if second_pass(tok, outcome, tok2, outcome_of(tok2), parastart2):
+                    return True
+            elif outcome == _FP_BREAK:
+                # The last token keeps its first-pass annotation
                 return True
-            if i >= n_before:
-                return False
-            prev, prev_outcome = tok, outcome
-        # The last token keeps its first-pass annotation
-        return prev_outcome == _FP_BREAK
+        return False
 
     def _first_pass_outcome(self, tok: str) -> int:
         """String-level ``_first_pass_annotation``: one of the ``_FP_*`` outcomes."""
@@ -909,7 +996,7 @@ class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
         """
         _, type2, _, first_upper2, first_lower2 = _derived(tok2)
         if outcome1 == _FP_ELLIPSIS:
-            return first_upper2
+            return first_upper2 and tok2 not in self._ELLIPSIS_CONTINUERS
         assert tok1 is not None
         period_final1, type1, _, _, _ = _derived(tok1)
         if not period_final1:
@@ -983,9 +1070,16 @@ class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
         Yields:
             Tokens with second-pass annotation
         """
-        # Use the original pair_iter as benchmark shows it's more efficient
-        for token1, token2 in pair_iter(tokens):
-            self._second_pass_annotation(token1, token2)
+        # Closing-punctuation tokens are transparent when pairing (see the
+        # string-level engine), so look past them for the successor.
+        closing = _CLOSING_CHARS
+        items = list(tokens)
+        n = len(items)
+        for i, token1 in enumerate(items):
+            j = i + 1
+            while j < n and all(c in closing for c in items[j].tok):
+                j += 1
+            self._second_pass_annotation(token1, items[j] if j < n else None)
             yield token1
 
     def _second_pass_annotation(self, token1: PunktToken, token2: PunktToken | None) -> str | None:
@@ -1011,7 +1105,7 @@ class PunktSentenceTokenizer(SegmenterMixin, PunktBase):
             next_typ = token2.type_no_sentperiod
 
             # Default behavior: ellipsis followed by uppercase letter is a sentence break
-            if token2.first_upper:
+            if token2.first_upper and token2.tok not in self._ELLIPSIS_CONTINUERS:
                 token1.sentbreak = True
                 if is_sent_starter is True:
                     return "Ellipsis followed by orthographic sentence starter"

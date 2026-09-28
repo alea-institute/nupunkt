@@ -57,6 +57,12 @@ ORTHO_BEG_LC = 1 << 4  # Lowercase at sentence beginning
 # ... etc
 ```
 
+> **Note (0.7.0):** the bundled default model no longer ships an orthographic
+> context. An ablation on the legal gold set and on three general-English corpora
+> showed it changed fewer than 0.1% of boundaries, while making up 97% of the
+> model file. The trainer still learns it, models you train keep it, and the
+> tokenizer uses it when present. See `docs/benchmarks/accuracy.md`.
+
 This helps distinguish:
 - "Dr. Smith" (uppercase after abbreviation - normal)
 - "end. She" (uppercase after period - sentence boundary)
@@ -174,23 +180,31 @@ The algorithm:
 ## Performance Characteristics
 
 ### Base Algorithm
-- **Speed**: ~33M characters/second on legal text
-- **Memory**: O(n) where n is vocabulary size
-- **Accuracy**: 91.1% precision on legal benchmarks
+- **Speed**: tens of millions of characters per second per core; measured
+  figures and methodology are in `docs/benchmarks/performance.md`
+- **Memory**: about 19 MB resident with the default model (25 KB on disk)
+- **Accuracy**: precision 0.90, recall 0.69, F1 0.78 on the legal gold set
+  (Punkt only); the layout-aware default of the segmentation interface raises
+  recall substantially, see `docs/layout.md` and `docs/benchmarks/accuracy.md`
 
 ### Adaptive Algorithm
-- **Speed**: ~10-15% slower than base
+- **Speed**: several times slower than the base string-level engine
 - **Memory**: Same as base + pattern matching overhead
-- **Accuracy**: Higher on texts with novel abbreviation patterns
+- **Accuracy**: on the gold sets it is slightly below the base tokenizer; a
+  higher `confidence_threshold` yields more sentence breaks, a lower one fewer
 
 ## Implementation Details
 
 ### Optimization Techniques
 
-1. **Token Caching**: Common tokens are cached for speed
-2. **Fast Paths**: Text without periods bypasses full processing
+1. **String-level decisions**: boundary decisions are computed from token
+   strings and memoized per context; `PunktToken` objects are built only for
+   subclasses that override the annotation hooks
+2. **Fast Paths**: Text without sentence-ending punctuation bypasses full processing
 3. **Compiled Regexes**: All patterns pre-compiled at startup
-4. **Lazy Loading**: Models loaded only when needed
+4. **Lazy Loading**: Models loaded only when needed; import plus first call takes about 14 ms
+5. **Determinism**: no shared mutable token state; the same input always gives
+   the same output regardless of what was processed before
 
 ### Memory-Efficient Training
 

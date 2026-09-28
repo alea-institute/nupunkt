@@ -20,6 +20,7 @@ from nupunkt.core.tokens import PunktToken
 from nupunkt.document import Document, Paragraph, Sentence
 
 # Models
+from nupunkt.layout import blank_page_furniture
 from nupunkt.models import load_default_model
 from nupunkt.segmentation import Segment, Segmenter, WordSegmenter, contiguous
 from nupunkt.tokenizers.paragraph_tokenizer import PunktParagraphTokenizer
@@ -142,7 +143,7 @@ def sent_tokenize(
         model: Model to use - "default", a file path, or a model name
         adaptive: Enable adaptive tokenization with dynamic pattern recognition
         confidence_threshold: Decision threshold for adaptive mode (0.0-1.0)
-                            Lower = more sentence breaks, Higher = fewer breaks
+                            Higher = more sentence breaks, Lower = fewer breaks
         dynamic_abbrev: Discover abbreviation patterns at runtime (M.I.T., Ph.D.)
         return_confidence: Return (sentence, confidence) tuples instead of just sentences
         debug: Enable debug output showing decision reasoning
@@ -232,8 +233,8 @@ def sent_tokenize_adaptive(
         ['She got her Ph.D. at M.I.T. yesterday.']
 
         >>> # Tune for your use case
-        >>> sent_tokenize_adaptive(legal_text, threshold=0.85)  # High precision
-        >>> sent_tokenize_adaptive(tweets, threshold=0.5)       # High recall
+        >>> sent_tokenize_adaptive(legal_text, threshold=0.5)   # Fewer breaks (more conservative)
+        >>> sent_tokenize_adaptive(tweets, threshold=0.85)      # More breaks
     """
     return sent_tokenize(
         text,
@@ -597,6 +598,8 @@ def sentences(
     adaptive: bool = False,
     confidence_threshold: float = 0.7,
     dynamic_abbrev: bool = True,
+    paragraph_breaks: bool = True,
+    line_breaks: bool = False,
 ) -> list[str]:
     """
     Split text into sentences.
@@ -607,11 +610,15 @@ def sentences(
         adaptive: Use the adaptive tokenizer with dynamic abbreviation detection
         confidence_threshold: Decision threshold for adaptive mode (0.0-1.0)
         dynamic_abbrev: Discover abbreviation patterns at runtime (adaptive mode)
+        paragraph_breaks: Blank lines are hard sentence boundaries (see ``nupunkt.layout``)
+        line_breaks: Heading and list-item line breaks are boundaries too (opt-in)
 
     Returns:
         A list of sentences, without surrounding whitespace
     """
-    return segmenter("sentence", model, adaptive, confidence_threshold, dynamic_abbrev).texts(text)
+    return segmenter("sentence", model, adaptive, confidence_threshold, dynamic_abbrev).texts(
+        text, paragraph_breaks=paragraph_breaks, line_breaks=line_breaks
+    )
 
 
 def sentence_spans(
@@ -620,6 +627,8 @@ def sentence_spans(
     adaptive: bool = False,
     confidence_threshold: float = 0.7,
     dynamic_abbrev: bool = True,
+    paragraph_breaks: bool = True,
+    line_breaks: bool = False,
 ) -> list[tuple[int, int]]:
     """
     Get the (start, end) character span of each sentence.
@@ -633,11 +642,15 @@ def sentence_spans(
         adaptive: Use the adaptive tokenizer with dynamic abbreviation detection
         confidence_threshold: Decision threshold for adaptive mode (0.0-1.0)
         dynamic_abbrev: Discover abbreviation patterns at runtime (adaptive mode)
+        paragraph_breaks: Blank lines are hard sentence boundaries (see ``nupunkt.layout``)
+        line_breaks: Heading and list-item line breaks are boundaries too (opt-in)
 
     Returns:
         A list of (start, end) tuples
     """
-    return segmenter("sentence", model, adaptive, confidence_threshold, dynamic_abbrev).spans(text)
+    return segmenter("sentence", model, adaptive, confidence_threshold, dynamic_abbrev).spans(
+        text, paragraph_breaks=paragraph_breaks, line_breaks=line_breaks
+    )
 
 
 def sentence_segments(
@@ -646,6 +659,8 @@ def sentence_segments(
     adaptive: bool = False,
     confidence_threshold: float = 0.7,
     dynamic_abbrev: bool = True,
+    paragraph_breaks: bool = True,
+    line_breaks: bool = False,
 ) -> list[Segment]:
     """
     Get each sentence with its character span.
@@ -656,12 +671,14 @@ def sentence_segments(
         adaptive: Use the adaptive tokenizer with dynamic abbreviation detection
         confidence_threshold: Decision threshold for adaptive mode (0.0-1.0)
         dynamic_abbrev: Discover abbreviation patterns at runtime (adaptive mode)
+        paragraph_breaks: Blank lines are hard sentence boundaries (see ``nupunkt.layout``)
+        line_breaks: Heading and list-item line breaks are boundaries too (opt-in)
 
     Returns:
         A list of ``Segment(text, start, end)``
     """
     return segmenter("sentence", model, adaptive, confidence_threshold, dynamic_abbrev).segments(
-        text
+        text, paragraph_breaks=paragraph_breaks, line_breaks=line_breaks
     )
 
 
@@ -724,6 +741,8 @@ def segment(
     adaptive: bool = False,
     confidence_threshold: float = 0.7,
     dynamic_abbrev: bool = True,
+    paragraph_breaks: bool = True,
+    line_breaks: bool = False,
 ) -> Document:
     """
     Segment text into paragraphs, sentences and words in a single pass.
@@ -742,6 +761,9 @@ def segment(
             tokenizer object)
         confidence_threshold: Decision threshold for adaptive mode (0.0-1.0)
         dynamic_abbrev: Discover abbreviation patterns at runtime (adaptive mode)
+        paragraph_breaks: Blank lines separate paragraphs and end sentences (see
+            ``nupunkt.layout``); ``False`` derives paragraphs from Punkt boundaries
+        line_breaks: Heading and list-item line breaks also end sentences (opt-in)
 
     Returns:
         A :class:`Document` with ``paragraphs`` -> ``sentences`` -> ``words``
@@ -760,7 +782,7 @@ def segment(
         tokenizer = _get_adaptive_tokenizer(model, confidence_threshold, dynamic_abbrev)
     else:
         tokenizer = load(model)
-    return Document.from_tokenizer(text, tokenizer)
+    return Document.from_tokenizer(text, tokenizer, paragraph_breaks, line_breaks)
 
 
 __all__ = [
@@ -778,6 +800,7 @@ __all__ = [
     "Segmenter",
     "WordSegmenter",
     "contiguous",
+    "blank_page_furniture",
     "segmenter",
     "words",
     "word_spans",

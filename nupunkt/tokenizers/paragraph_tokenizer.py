@@ -7,9 +7,11 @@ This module provides tokenizer classes for paragraph boundary detection.
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from nupunkt.core.language_vars import PunktLanguageVars
 from nupunkt.core.tokens import PunktToken
+from nupunkt.layout import iter_blocks
 from nupunkt.segmentation import Segment, SegmenterMixin, tight
 from nupunkt.tokenizers.sentence_tokenizer import PunktSentenceTokenizer
 
@@ -63,14 +65,27 @@ class PunktParagraphTokenizer(SegmenterMixin):
             PunktParagraphTokenizer._default_model = load_default_model()
         return PunktParagraphTokenizer._default_model
 
-    def iter_segments(self, text: str) -> Iterator[Segment]:
+    def iter_segments(self, text: str, **options: Any) -> Iterator[Segment]:
         """
         Yield each paragraph of ``text`` with its tight character span.
 
-        Unlike ``tokenize_with_spans``, whose spans are contiguous and include the
-        blank lines between paragraphs, these spans exclude surrounding whitespace.
+        With ``paragraph_breaks`` (default: the sentence tokenizer's setting, ``True``)
+        every blank line separates paragraphs, matching the sentence-level layout
+        rule. With it off, paragraphs are the legacy ones of ``tokenize_with_spans``:
+        a Punkt sentence boundary followed by a blank line. Either way the spans
+        exclude surrounding whitespace.
         """
-        raw = (Segment(para, start, end) for para, (start, end) in self.tokenize_with_spans(text))
+        paragraph_breaks = options.pop("paragraph_breaks", None)
+        if options:
+            raise TypeError(f"unexpected options: {sorted(options)}")
+        if paragraph_breaks is None:
+            paragraph_breaks = getattr(self._sentence_tokenizer, "paragraph_breaks", True)
+        if paragraph_breaks:
+            raw = (Segment(text[s:e], s, e) for s, e in iter_blocks(text, True, False))
+        else:
+            raw = (
+                Segment(para, start, end) for para, (start, end) in self.tokenize_with_spans(text)
+            )
         yield from tight(raw, text)
 
     def tokenize(self, text: str) -> list[str]:

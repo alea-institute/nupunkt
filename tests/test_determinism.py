@@ -187,3 +187,21 @@ class TestOrthoCompaction:
             "Use e.g. apples.",
             "They are good.",
         ]
+
+
+class TestPublicAccessors:
+    def test_abbreviations_snapshot(self):
+        tokenizer = PunktSentenceTokenizer.load(nupunkt.models.get_default_model_path())
+        abbrevs = tokenizer.abbreviations
+        assert isinstance(abbrevs, frozenset)
+        assert "dr" in abbrevs and "u.s.c" in abbrevs
+        tokenizer.add_abbreviation("Zzq.")
+        assert "zzq" not in abbrevs  # snapshot
+        assert "zzq" in tokenizer.abbreviations
+
+    def test_parameters_is_live(self):
+        params = PunktParameters()
+        tokenizer = PunktSentenceTokenizer(params, include_common_abbrevs=False)
+        assert tokenizer.parameters is params
+        tokenizer.parameters.abbrev_types.add("zzq")
+        assert tokenizer.tokenize("Met Zzq. smith.") == ["Met Zzq. smith."]

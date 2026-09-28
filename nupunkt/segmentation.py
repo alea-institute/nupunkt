@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Iterator
-from typing import NamedTuple, Protocol, runtime_checkable
+from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from nupunkt.core.language_vars import PunktLanguageVars
 
@@ -53,17 +53,17 @@ class Segment(NamedTuple):
 class Segmenter(Protocol):
     """The interface every segmenter provides."""
 
-    def iter_segments(self, text: str) -> Iterator[Segment]: ...
+    def iter_segments(self, text: str, **options: Any) -> Iterator[Segment]: ...
 
-    def iter_texts(self, text: str) -> Iterator[str]: ...
+    def iter_texts(self, text: str, **options: Any) -> Iterator[str]: ...
 
-    def iter_spans(self, text: str) -> Iterator[tuple[int, int]]: ...
+    def iter_spans(self, text: str, **options: Any) -> Iterator[tuple[int, int]]: ...
 
-    def segments(self, text: str) -> list[Segment]: ...
+    def segments(self, text: str, **options: Any) -> list[Segment]: ...
 
-    def texts(self, text: str) -> list[str]: ...
+    def texts(self, text: str, **options: Any) -> list[str]: ...
 
-    def spans(self, text: str) -> list[tuple[int, int]]: ...
+    def spans(self, text: str, **options: Any) -> list[tuple[int, int]]: ...
 
 
 class SegmenterMixin:
@@ -74,31 +74,36 @@ class SegmenterMixin:
     non-overlapping :class:`Segment` objects) and get the other five methods.
     """
 
-    def iter_segments(self, text: str) -> Iterator[Segment]:
-        """Yield each segment of ``text`` with its span."""
+    def iter_segments(self, text: str, **options: Any) -> Iterator[Segment]:
+        """Yield each segment of ``text`` with its span.
+
+        Keyword options are segmenter-specific (for example ``paragraph_breaks``
+        and ``line_breaks`` on the sentence tokenizer) and are passed through by
+        the five derived methods.
+        """
         raise NotImplementedError
 
-    def iter_texts(self, text: str) -> Iterator[str]:
+    def iter_texts(self, text: str, **options: Any) -> Iterator[str]:
         """Yield the text of each segment."""
-        for segment in self.iter_segments(text):
+        for segment in self.iter_segments(text, **options):
             yield segment.text
 
-    def iter_spans(self, text: str) -> Iterator[tuple[int, int]]:
+    def iter_spans(self, text: str, **options: Any) -> Iterator[tuple[int, int]]:
         """Yield the ``(start, end)`` span of each segment."""
-        for segment in self.iter_segments(text):
+        for segment in self.iter_segments(text, **options):
             yield (segment.start, segment.end)
 
-    def segments(self, text: str) -> list[Segment]:
+    def segments(self, text: str, **options: Any) -> list[Segment]:
         """Return all segments of ``text`` with their spans."""
-        return list(self.iter_segments(text))
+        return list(self.iter_segments(text, **options))
 
-    def texts(self, text: str) -> list[str]:
+    def texts(self, text: str, **options: Any) -> list[str]:
         """Return the text of every segment."""
-        return list(self.iter_texts(text))
+        return list(self.iter_texts(text, **options))
 
-    def spans(self, text: str) -> list[tuple[int, int]]:
+    def spans(self, text: str, **options: Any) -> list[tuple[int, int]]:
         """Return the ``(start, end)`` span of every segment."""
-        return list(self.iter_spans(text))
+        return list(self.iter_spans(text, **options))
 
 
 def contiguous(segments: Iterable[Segment], source: str) -> list[Segment]:
@@ -170,8 +175,10 @@ class WordSegmenter(SegmenterMixin):
     def __init__(self, lang_vars: PunktLanguageVars | None = None) -> None:
         self._lang_vars = lang_vars or PunktLanguageVars()
 
-    def iter_segments(self, text: str) -> Iterator[Segment]:
-        """Yield each word of ``text`` with its span."""
+    def iter_segments(self, text: str, **options: Any) -> Iterator[Segment]:
+        """Yield each word of ``text`` with its span (no options are defined)."""
+        if options:
+            raise TypeError(f"unexpected options for WordSegmenter: {sorted(options)}")
         finditer = self._lang_vars.word_tokenize_pattern.finditer
         # Tokenize line by line, exactly as PunktBase._tokenize_words does
         for line in self._RE_LINE.finditer(text):
